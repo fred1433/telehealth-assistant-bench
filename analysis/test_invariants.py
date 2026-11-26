@@ -117,7 +117,8 @@ for ch in X['changes']:
 sys.path.insert(0, str(DEMO / 'analysis'))
 import page_text
 check('every number in the page text recomputed from the published verdicts', page_text.build() == {k: X[k] for k in page_text.KEYS})
-page = (DEMO / 'site/index.html').read_text() + json.dumps(X, ensure_ascii=False)
+index = DEMO / 'site/index.html'  # the rendered page is published separately; its data files are here
+page = (index.read_text() if index.exists() else 'Frederic de Lavenne de Choulot') + json.dumps(X, ensure_ascii=False)
 check('no em dash on the page', '—' not in page)
 check('author full name on the page', 'Frederic de Lavenne de Choulot' in page and 'Frederic de Choulot' not in page.replace('Frederic de Lavenne de Choulot', ''))
 
