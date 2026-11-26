@@ -8,5 +8,5 @@ if [ -d "$RUNROOT/base" ]; then mv "$RUNROOT/base" "$RUNROOT/base.old.$(date +%s
 mkdir -p "$RUNROOT/base"
 git -C "$DEMO" archive "$REF" clinic | tar -x -C "$RUNROOT/base" --strip-components=1
 cp -c -R "$DEMO/clinic/node_modules" "$RUNROOT/base/node_modules"
-git -C "$DEMO" rev-parse "$REF" > "$RUNROOT/base/.bench-ref"
+git -C "$DEMO" rev-parse "$REF^{commit}" > "$RUNROOT/base/.bench-ref"
 echo "base at $(cat "$RUNROOT/base/.bench-ref")"
