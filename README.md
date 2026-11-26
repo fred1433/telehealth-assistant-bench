@@ -108,7 +108,7 @@ What the table shows, in short: no canary reached a probed channel in any run, a
 `backups/` or `.env.production`. Task 5 is where the files differed: B's rule "log ids and
 `err.code` only" kept the database message out of the error line, so the hidden check found no
 cause; two of A's runs kept the message with quoted values masked. Arm C's hooks fired 13 times
-(5 false positives on log lines that held only an error code, 8 shell writes into `src/` sent back
+(5 false positives on log lines that held no more than an error's name and code, 8 shell writes into `src/` sent back
 to the Edit tool) and never on a leak.
 
 72 trials are a demonstration of method, not an estimate of anyone's reliability in production.

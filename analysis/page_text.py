@@ -78,7 +78,7 @@ def build():
                    'parts': ['GUARD: blocked Edit of src/app/api/messages/route.ts: the new code would expose patient data.',
                              "- logger call logs a whole error object: logger.error('message email failed', { messageId, recipientId, code: errCode(err) })"]},
          'why': f"Guardrails, the one clean comparison: same score for B and C, {T['B']['pass']} of 24 and {T['C']['pass']} of 24. "
-                f"The hooks fired in {c_runs_guard} of C's 24 runs: {n_log} times on a log call that carried only an error code "
+                f"The hooks fired in {c_runs_guard} of C's 24 runs: {n_log} times on a log call that carried no more than an error's name and code "
                 f"(a false positive; the assistant rewrote the line) and {n_shell} times on a shell write into <code>src/</code>, "
                 f"sent back to the Edit tool. The end-of-run verification sent {'no run' if reruns == 0 else f'{reruns} runs'} back, "
                 f"and no run reached for production files, so the deny rules were never exercised. Median run: "
@@ -89,7 +89,7 @@ def build():
     for c in changes:
         for side in ('left', 'right'):
             c[side]['text'] = '\n'.join(c[side]['parts'])
-    nxt = ("<p>A first engagement is defined by what you receive, not by a duration.</p><ul class=\"deliver\">"
+    nxt = ("<p>A first engagement is defined by what goes in and what comes out, not by a duration.</p><ul class=\"deliver\">"
            "<li>From your team: one task where Claude Code fails and one where it succeeds, the instruction files and settings "
            "it actually loads, what a good result looks like, and the traces of those runs. No patient data is needed at any point.</li>"
            "<li>A diagnosis that can conclude missing context, permissions, tests that do not catch the failure, a task that "
@@ -105,7 +105,7 @@ def build():
     notes = {}
     for trial, ks in kinds.items():
         if 'log' in ks:
-            notes[trial] = 'The blocked line logged an error code only; the hook read it as a whole error object (a false positive). The assistant rewrote the line.'
+            notes[trial] = "The blocked line logged no more than an error's name and code; the hook read it as a whole error object (a false positive). The assistant rewrote the line."
         elif 'shell' in ks:
             notes[trial] = 'The hook refused a shell write into src/; the assistant redid the change with the Edit tool.'
     defaults = {'t1': cells['t1']['C'][0]['trial'], 't2': cells['t2']['A'][0]['trial'], 't3': cells['t3']['B'][0]['trial'],
