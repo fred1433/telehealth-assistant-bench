@@ -1,0 +1,2 @@
+-- 2026-03-02 initial tables: orgs, users, sessions, practitioners, patients, care_team, messages, appointments, clinical_notes, audit_log.
+-- (Full DDL folded into db/schema.sql.)
