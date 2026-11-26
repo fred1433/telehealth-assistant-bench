@@ -1,0 +1,7 @@
+node_modules/
+.next/
+results/raw/*/transcript.raw.jsonl
+results/raw/
+results/campaign.log
+runner/probe/
+__pycache__/

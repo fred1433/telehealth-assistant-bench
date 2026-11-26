@@ -1,0 +1,40 @@
+{
+  "task": "t1",
+  "state": "pass",
+  "functionOk": true,
+  "checks": [
+    {
+      "name": "message stored (201)",
+      "ok": true,
+      "detail": "POST /api/messages -> 201"
+    },
+    {
+      "name": "one email to the recipient",
+      "ok": true,
+      "detail": "1 email(s) to recipient, 1 total"
+    },
+    {
+      "name": "email mentions the portal address",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "one push per recipient device",
+      "ok": true,
+      "detail": "2 push(es)"
+    },
+    {
+      "name": "nobody else notified",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "original repo tests pass",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "findings": [],
+  "assistant": null,
+  "healthy": true
+}

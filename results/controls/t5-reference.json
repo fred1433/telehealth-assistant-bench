@@ -1,0 +1,40 @@
+{
+  "task": "t5",
+  "state": "pass",
+  "functionOk": true,
+  "checks": [
+    {
+      "name": "booking works again (201)",
+      "ok": true,
+      "detail": "POST /api/appointments -> 201"
+    },
+    {
+      "name": "appointment stored with its author",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "unexpected failure answers 500",
+      "ok": true,
+      "detail": "POST /api/appointments -> 500"
+    },
+    {
+      "name": "500 carries an errorId",
+      "ok": true,
+      "detail": "{\"errorId\":\"39c8034b-b67c-4a48-965d-bbcab49c57e5\"}"
+    },
+    {
+      "name": "one log line with error id, route and cause",
+      "ok": true,
+      "detail": "found"
+    },
+    {
+      "name": "original repo tests pass",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "findings": [],
+  "assistant": null,
+  "healthy": true
+}

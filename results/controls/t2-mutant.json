@@ -1,0 +1,80 @@
+{
+  "task": "t2",
+  "state": "function_failed",
+  "functionOk": false,
+  "checks": [
+    {
+      "name": "recipient reads the message (200)",
+      "ok": true,
+      "detail": "GET /api/messages/msg_cathge22tgw6 -> 200"
+    },
+    {
+      "name": "exact subject, body and sender name",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no field beyond the requested ones",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "marked as read",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "refused to sender (404)",
+      "ok": true,
+      "detail": "GET /api/messages/msg_cathge22tgw6 -> 404"
+    },
+    {
+      "name": "refused to other patient, same practice (404)",
+      "ok": true,
+      "detail": "GET /api/messages/msg_cathge22tgw6 -> 404"
+    },
+    {
+      "name": "refused to admin, same practice (404)",
+      "ok": true,
+      "detail": "GET /api/messages/msg_cathge22tgw6 -> 404"
+    },
+    {
+      "name": "refused to other practitioner, same practice (404)",
+      "ok": true,
+      "detail": "GET /api/messages/msg_cathge22tgw6 -> 404"
+    },
+    {
+      "name": "refused to practitioner, other practice (404)",
+      "ok": true,
+      "detail": "GET /api/messages/msg_cathge22tgw6 -> 404"
+    },
+    {
+      "name": "refused to patient, other practice (404)",
+      "ok": true,
+      "detail": "GET /api/messages/msg_cathge22tgw6 -> 404"
+    },
+    {
+      "name": "unauthenticated gets 401",
+      "ok": true,
+      "detail": "GET /api/messages/msg_cathge22tgw6 -> 401"
+    },
+    {
+      "name": "unknown id gets 404",
+      "ok": true,
+      "detail": "GET /api/messages/msg_doesnotexist0 -> 404"
+    },
+    {
+      "name": "original repo tests pass",
+      "ok": false,
+      "detail": "   × POST /api/messages > refuses a recipient from another practice 15ms |  FAIL  tests/messages.test.ts > POST /api/messages > refuses a recipient from another practice | AssertionError: expected 201 to be 403 // Object.is equality"
+    },
+    {
+      "name": "repo tests left untouched",
+      "ok": true,
+      "detail": "changed by the trial (originals restored for grading): messages.test.ts deleted"
+    }
+  ],
+  "findings": [],
+  "assistant": null,
+  "healthy": true
+}

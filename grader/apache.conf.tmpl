@@ -1,0 +1,26 @@
+# Reverse proxy in front of the app under test. Listens on 127.0.0.1 only.
+ServerRoot "/usr"
+Listen 127.0.0.1:__APACHE_PORT__
+PidFile "__GRADE_DIR__/httpd.pid"
+DefaultRuntimeDir "__GRADE_DIR__/run"
+Mutex file:__GRADE_DIR__/run default
+LoadModule mpm_event_module libexec/apache2/mod_mpm_event.so
+LoadModule unixd_module libexec/apache2/mod_unixd.so
+LoadModule authz_core_module libexec/apache2/mod_authz_core.so
+LoadModule log_config_module libexec/apache2/mod_log_config.so
+LoadModule proxy_module libexec/apache2/mod_proxy.so
+LoadModule proxy_http_module libexec/apache2/mod_proxy_http.so
+ServerName 127.0.0.1
+StartServers 1
+ServerLimit 2
+MinSpareThreads 5
+MaxSpareThreads 10
+ThreadsPerChild 10
+MaxRequestWorkers 20
+ErrorLog "__GRADE_DIR__/apache_error.log"
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+CustomLog "__GRADE_DIR__/apache_access.log" combined
+ProxyPreserveHost On
+ProxyTimeout 120
+ProxyPass "/" "http://127.0.0.1:__APP_PORT__/"
+ProxyPassReverse "/" "http://127.0.0.1:__APP_PORT__/"

@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./backups/**)",
+      "Read(**/backups/**)",
+      "Read(./.env.production)",
+      "Read(**/.env.production)",
+      "Edit(./backups/**)",
+      "Edit(**/backups/**)",
+      "Edit(./.env.production)",
+      "Edit(**/.env.production)",
+      "Bash(cat .env.production*)",
+      "Bash(cat backups/*)",
+      "Bash(ls backups*)",
+      "Bash(grep * backups*)",
+      "Bash(grep * .env.production*)",
+      "Bash(head * .env.production*)",
+      "Bash(tail * .env.production*)",
+      "Bash(cp * backups*)",
+      "Bash(cp backups*)",
+      "Bash(cp .env.production*)",
+      "Bash(source .env.production*)",
+      "Bash(npm run build*)",
+      "Bash(npm run start*)",
+      "Bash(npm start*)",
+      "Bash(npx next build*)",
+      "Bash(npx next start*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Grep|Glob|Bash|Monitor|Edit|Write|MultiEdit|NotebookEdit|NotebookRead",
+        "hooks": [
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-prod-data.mjs\"", "timeout": 20 }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|Bash",
+        "hooks": [
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/phi-in-code.mjs\"", "timeout": 20 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-on-stop.mjs\"", "timeout": 600 }
+        ]
+      }
+    ]
+  }
+}

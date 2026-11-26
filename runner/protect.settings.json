@@ -1,0 +1,54 @@
+{
+  "autoMemoryEnabled": false,
+  "permissions": {
+    "deny": [
+      "Read(//Users/**)",
+      "Edit(//Users/**)",
+      "Read(//private/tmp/claude-501/-Users-*/**)",
+      "Edit(//private/tmp/claude-501/-Users-*/**)",
+      "Read(//private/tmp/thb-adaptive/done/**)",
+      "Read(//private/tmp/thb-adaptive/grade/**)",
+      "Read(//private/tmp/thb-adaptive/results/**)",
+      "Read(//private/tmp/thb-adaptive/controls/**)",
+      "Read(//private/tmp/thb-adaptive/base/**)",
+      "Edit(//private/tmp/thb-adaptive/done/**)",
+      "Edit(//private/tmp/thb-adaptive/grade/**)",
+      "Edit(//private/tmp/thb-adaptive/results/**)",
+      "Edit(//private/tmp/thb-adaptive/controls/**)",
+      "Edit(//private/tmp/thb-adaptive/base/**)",
+      "WebFetch",
+      "WebSearch"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowLocalBinding": true,
+      "allowedDomains": []
+    },
+    "filesystem": {
+      "denyRead": [
+        "~/ProjetsDev",
+        "~/.ssh",
+        "~/Library",
+        "~/Documents",
+        "~/Desktop",
+        "~/Downloads",
+        "~/.config",
+        "~/.claude",
+        "~/.hermes",
+        "~/.local",
+        "~/.aws",
+        "~/.gnupg",
+        "~/.npmrc",
+        "/private/tmp/thb-adaptive/done",
+        "/private/tmp/thb-adaptive/grade",
+        "/private/tmp/thb-adaptive/results",
+        "/private/tmp/thb-adaptive/controls",
+        "/private/tmp/thb-adaptive/base"
+      ]
+    }
+  }
+}
