@@ -1,0 +1,120 @@
+diff --git a/src/app/api/patients/search/route.ts b/src/app/api/patients/search/route.ts
+new file mode 100644
+index 0000000..73ad3c3
+--- /dev/null
++++ b/src/app/api/patients/search/route.ts
+@@ -0,0 +1,27 @@
++import { z } from 'zod';
++import { requireUser } from '@/lib/auth';
++import { json, readJson, route, HttpError } from '@/lib/http';
++import { audit } from '@/lib/audit';
++import { searchForPractitioner } from '@/repos/patients';
++
++const Body = z.object({ q: z.string().trim().min(2).max(100) });
++
++/**
++ * Patient name search. POST with the term in the body: a GET query string would be
++ * written to the Apache access log.
++ */
++export const POST = route(async (req) => {
++  const user = await requireUser(req);
++  if (user.role !== 'practitioner' || !user.practitionerId) throw new HttpError(403, 'forbidden');
++  const { q } = Body.parse(await readJson(req));
++  const rows = await searchForPractitioner(user.orgId, user.practitionerId, q, 20);
++  await audit(user, 'patient.search', 'practitioner', user.practitionerId);
++  return json({
++    results: rows.map((p) => ({
++      id: p.id,
++      firstName: p.first_name,
++      lastName: p.last_name,
++      dateOfBirth: p.date_of_birth,
++    })),
++  });
++});
+diff --git a/src/repos/patients.ts b/src/repos/patients.ts
+index bf18df1..357a790 100644
+--- a/src/repos/patients.ts
++++ b/src/repos/patients.ts
+@@ -1,4 +1,4 @@
+-import { queryOne } from '@/lib/db';
++import { query, queryOne } from '@/lib/db';
+ 
+ export interface PatientRow {
+   id: string;
+@@ -18,6 +18,25 @@ export async function getPatient(patientId: string): Promise<PatientRow | null>
+   return queryOne<PatientRow>('SELECT * FROM patients WHERE id = ?', [patientId]);
+ }
+ 
++/** Name search among a practitioner's active care-team patients in one org. Narrow column list. */
++export async function searchForPractitioner(
++  orgId: string,
++  practitionerId: string,
++  fragment: string,
++  limit: number,
++): Promise<Array<{ id: string; first_name: string; last_name: string; date_of_birth: Date }>> {
++  const like = `%${fragment.replace(/[\\%_]/g, '\\$&')}%`;
++  return query(
++    `SELECT p.id, p.first_name, p.last_name, p.date_of_birth
++       FROM patients p
++       JOIN care_team ct ON ct.patient_id = p.id AND ct.practitioner_id = ? AND ct.active = 1
++      WHERE p.org_id = ? AND (p.first_name LIKE ? OR p.last_name LIKE ?)
++      ORDER BY p.last_name, p.first_name, p.id
++      LIMIT ?`,
++    [practitionerId, orgId, like, like, limit],
++  );
++}
++
+ export async function getPatientByUserId(userId: string): Promise<PatientRow | null> {
+   return queryOne<PatientRow>('SELECT * FROM patients WHERE user_id = ?', [userId]);
+ }
+diff --git a/tests/patient-search.test.ts b/tests/patient-search.test.ts
+new file mode 100644
+index 0000000..11948cb
+--- /dev/null
++++ b/tests/patient-search.test.ts
+@@ -0,0 +1,45 @@
++import { describe, expect, it, vi } from 'vitest';
++import { POST } from '@/app/api/patients/search/route';
++import { call, TOKENS } from './helpers';
++
++const search = (token: string | undefined, q: unknown) =>
++  call(POST, { method: 'POST', path: '/api/patients/search', token, body: { q } });
++const ids = (r: { json: any }) => r.json.results.map((x: { id: string }) => x.id);
++
++describe('POST /api/patients/search', () => {
++  it('matches case-insensitively anywhere in first or last name', async () => {
++    const a = await search(TOKENS.rosa, 'LIND');
++    expect(a.status).toBe(200);
++    expect(ids(a)).toEqual(['pt_ava']);
++    expect(Object.keys(a.json.results[0]).sort()).toEqual(['dateOfBirth', 'firstName', 'id', 'lastName']);
++    expect(ids(await search(TOKENS.rosa, 'heo'))).toEqual(['pt_theo']);
++  });
++
++  it('is limited to own care team and practice', async () => {
++    expect(ids(await search(TOKENS.rosa, 'Raman'))).toEqual([]);
++    expect(ids(await search(TOKENS.rosa, 'Lindgren'))).toEqual([]);
++    expect(ids(await search(TOKENS.hal, 'Lindqvist'))).toEqual([]);
++    expect(ids(await search(TOKENS.hal, 'Lindgren'))).toEqual(['pt_june']);
++  });
++
++  it('treats % and _ literally', async () => {
++    expect(ids(await search(TOKENS.rosa, '%%'))).toEqual([]);
++  });
++
++  it('rejects short terms, wrong roles and anonymous callers', async () => {
++    expect((await search(TOKENS.rosa, 'a')).status).toBe(400);
++    expect((await search(TOKENS.ava, 'Lind')).status).toBe(403);
++    expect((await search(TOKENS.dana, 'Lind')).status).toBe(403);
++    expect((await search(undefined, 'Lind')).status).toBe(401);
++  });
++
++  it('does not log the search term or names', async () => {
++    const out = vi.spyOn(process.stdout, 'write');
++    const err = vi.spyOn(process.stderr, 'write');
++    await search(TOKENS.rosa, 'Lindqvist');
++    const logged = [...out.mock.calls, ...err.mock.calls].map((c) => String(c[0])).join('');
++    out.mockRestore();
++    err.mockRestore();
++    expect(logged).not.toContain('Lindqvist');
++  });
++});

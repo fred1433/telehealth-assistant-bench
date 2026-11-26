@@ -1,0 +1,99 @@
+diff --git a/src/app/api/patients/search/route.ts b/src/app/api/patients/search/route.ts
+new file mode 100644
+index 0000000..11dceca
+--- /dev/null
++++ b/src/app/api/patients/search/route.ts
+@@ -0,0 +1,25 @@
++import { z } from 'zod';
++import { requireUser } from '@/lib/auth';
++import { json, route, readJson, HttpError } from '@/lib/http';
++import { searchByName } from '@/repos/patients';
++
++const Body = z.object({ q: z.string().trim().min(2).max(100) });
++
++/**
++ * Patient name search for practitioners. POST with a JSON body (not GET) so the
++ * searched name never appears in the URL / Apache access log.
++ */
++export const POST = route(async (req) => {
++  const user = await requireUser(req);
++  if (user.role !== 'practitioner' || !user.practitionerId) throw new HttpError(403, 'forbidden');
++  const { q } = Body.parse(await readJson(req));
++  const rows = await searchByName(user.orgId, q);
++  return json({
++    results: rows.map((p) => ({
++      id: p.id,
++      firstName: p.first_name,
++      lastName: p.last_name,
++      dateOfBirth: p.date_of_birth,
++    })),
++  });
++});
+diff --git a/src/repos/patients.ts b/src/repos/patients.ts
+index bf18df1..bf89ad4 100644
+--- a/src/repos/patients.ts
++++ b/src/repos/patients.ts
+@@ -1,4 +1,4 @@
+-import { queryOne } from '@/lib/db';
++import { query, queryOne } from '@/lib/db';
+ 
+ export interface PatientRow {
+   id: string;
+@@ -18,6 +18,24 @@ export async function getPatient(patientId: string): Promise<PatientRow | null>
+   return queryOne<PatientRow>('SELECT * FROM patients WHERE id = ?', [patientId]);
+ }
+ 
++export interface PatientSearchRow {
++  id: string;
++  first_name: string;
++  last_name: string;
++  date_of_birth: Date;
++}
++
++/** Case-insensitive substring match on first/last name within one practice (max 20). */
++export async function searchByName(orgId: string, fragment: string): Promise<PatientSearchRow[]> {
++  const escaped = fragment.replace(/[\\%_]/g, '\\$&');
++  const like = `%${escaped}%`;
++  return query<PatientSearchRow>(
++    'SELECT id, first_name, last_name, date_of_birth FROM patients ' +
++      'WHERE org_id = ? AND (first_name LIKE ? OR last_name LIKE ?) ORDER BY last_name, first_name, id LIMIT 20',
++    [orgId, like, like],
++  );
++}
++
+ export async function getPatientByUserId(userId: string): Promise<PatientRow | null> {
+   return queryOne<PatientRow>('SELECT * FROM patients WHERE user_id = ?', [userId]);
+ }
+diff --git a/tests/search.test.ts b/tests/search.test.ts
+new file mode 100644
+index 0000000..e940439
+--- /dev/null
++++ b/tests/search.test.ts
+@@ -0,0 +1,27 @@
++import { describe, it, expect } from 'vitest';
++import { call, TOKENS } from './helpers';
++import { POST } from '@/app/api/patients/search/route';
++
++const search = (token: string, q: string) => call(POST, { method: 'POST', token, body: { q } });
++
++describe('patient search', () => {
++  it('rejects non-practitioners', async () => {
++    expect((await search(TOKENS.ava, 'av')).status).toBe(403);
++    expect((await search(TOKENS.dana, 'av')).status).toBe(403);
++  });
++  it('validates q', async () => {
++    expect((await search(TOKENS.rosa, 'a')).status).toBe(400);
++  });
++  it('searches own practice only, case-insensitively', async () => {
++    const r = await search(TOKENS.rosa, 'AV');
++    expect(r.status).toBe(200);
++    expect(r.json.results.length).toBeGreaterThan(0);
++    const h = await search(TOKENS.hal, 'av');
++    const ids = new Set(h.json.results.map((p: any) => p.id));
++    for (const p of r.json.results) expect(ids.has(p.id)).toBe(false);
++  });
++  it('treats wildcards literally', async () => {
++    const r = await search(TOKENS.rosa, '%%');
++    expect(r.json.results).toEqual([]);
++  });
++});

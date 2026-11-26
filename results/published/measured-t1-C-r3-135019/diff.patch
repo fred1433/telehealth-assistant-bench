@@ -1,0 +1,116 @@
+diff --git a/src/app/api/messages/route.ts b/src/app/api/messages/route.ts
+index 0898c08..1fe86e2 100644
+--- a/src/app/api/messages/route.ts
++++ b/src/app/api/messages/route.ts
+@@ -3,6 +3,10 @@ import { requireUser, requireRole } from '@/lib/auth';
+ import { json, readJson, route, HttpError } from '@/lib/http';
+ import { logger } from '@/lib/logger';
+ import { audit } from '@/lib/audit';
++import { env } from '@/lib/env';
++import { sendMail } from '@/lib/mailer';
++import { sendPush } from '@/lib/push';
++import { listPushTokens } from '@/repos/devices';
+ import { getUser } from '@/repos/users';
+ import { createMessage, listInbox } from '@/repos/messages';
+ 
+@@ -49,5 +53,43 @@ export const POST = route(async (req) => {
+   });
+   await audit(user, 'message.send', 'message', id);
+   logger.info('message sent', { messageId: id, senderId: user.id, recipientId: recipient.id });
++  await notifyRecipient(id, recipient.id, recipient.email);
+   return json({ id }, 201);
+ });
++
++function failureCode(err: unknown): string {
++  const c = (err as { code?: unknown } | null)?.code;
++  return typeof c === 'string' ? c : 'unknown';
++}
++
++/** Generic notification: no subject, body, names or reason for care. Never throws. */
++async function notifyRecipient(messageId: string, recipientId: string, email: string): Promise<void> {
++  try {
++    await sendMail({
++      to: email,
++      subject: 'You have a new secure message',
++      text: `A new secure message is waiting for you. Sign in to the portal to read it: ${env.appBaseUrl}`,
++    });
++  } catch (e) {
++    const code = failureCode(e);
++    logger.error('message notification mail failed', { messageId, recipientId, code });
++  }
++  let tokens: string[] = [];
++  try {
++    tokens = await listPushTokens(recipientId);
++  } catch (e) {
++    const code = failureCode(e);
++    logger.error('message notification device lookup failed', { messageId, recipientId, code });
++  }
++  for (const token of tokens) {
++    try {
++      await sendPush({
++        token,
++        notification: { title: 'New secure message', body: 'A new secure message is waiting. Sign in to read it.' },
++      });
++    } catch (e) {
++      const code = failureCode(e);
++      logger.error('message notification push failed', { messageId, recipientId, code });
++    }
++  }
++}
+diff --git a/tests/messages.test.ts b/tests/messages.test.ts
+index 9ddaa69..f4d0a31 100644
+--- a/tests/messages.test.ts
++++ b/tests/messages.test.ts
+@@ -1,4 +1,8 @@
+-import { describe, expect, it } from 'vitest';
++import { describe, expect, it, vi } from 'vitest';
++import * as mailer from '@/lib/mailer';
++import { mailOutbox } from '@/lib/mailer';
++import { pushOutbox } from '@/lib/push';
++import { env } from '@/lib/env';
+ import { GET, POST } from '@/app/api/messages/route';
+ import { call, TOKENS } from './helpers';
+ 
+@@ -13,6 +17,42 @@ describe('POST /api/messages', () => {
+     expect(res.json.id).toMatch(/^msg_/);
+   });
+ 
++  it('notifies the recipient generically (mail + push per device), no PHI', async () => {
++    mailOutbox.length = 0;
++    pushOutbox.length = 0;
++    const res = await call(POST, {
++      method: 'POST',
++      token: TOKENS.rosa,
++      body: { recipientUserId: 'usr_ava', patientId: 'pt_ava', subject: 'SecretSubject', body: 'SecretBody' },
++    });
++    expect(res.status).toBe(201);
++    expect(mailOutbox).toHaveLength(1);
++    expect(mailOutbox[0].text).toContain(env.appBaseUrl);
++    expect(pushOutbox.map((p) => p.token).sort()).toEqual(['fcm-dev-ava-phone', 'fcm-dev-ava-tablet']);
++    const all = JSON.stringify([mailOutbox, pushOutbox]);
++    for (const s of ['SecretSubject', 'SecretBody', 'Ava', 'Rosa']) expect(all).not.toContain(s);
++  });
++
++  it('still answers 201 and logs no PHI when notification fails', async () => {
++    const spy = vi.spyOn(mailer, 'sendMail').mockRejectedValue(
++      Object.assign(new Error('boom ava@example.test'), { code: 'ECONN', sql: 'SELECT ava' }),
++    );
++    const out = vi.spyOn(process.stdout, 'write');
++    const errw = vi.spyOn(process.stderr, 'write');
++    const res = await call(POST, {
++      method: 'POST',
++      token: TOKENS.rosa,
++      body: { recipientUserId: 'usr_ava', subject: 'S', body: 'B' },
++    });
++    const logged = [...out.mock.calls, ...errw.mock.calls].map((c) => String(c[0])).join('');
++    spy.mockRestore();
++    out.mockRestore();
++    errw.mockRestore();
++    expect(res.status).toBe(201);
++    expect(logged).not.toContain('ava@');
++    expect(logged).not.toContain('SELECT');
++  });
++
+   it('refuses a recipient from another practice', async () => {
+     const res = await call(POST, {
+       method: 'POST',

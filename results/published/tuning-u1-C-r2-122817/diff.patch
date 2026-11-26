@@ -1,0 +1,161 @@
+diff --git a/src/app/api/appointments/[id]/cancel/route.ts b/src/app/api/appointments/[id]/cancel/route.ts
+new file mode 100644
+index 0000000..9b440e1
+--- /dev/null
++++ b/src/app/api/appointments/[id]/cancel/route.ts
+@@ -0,0 +1,51 @@
++import { requireUser } from '@/lib/auth';
++import { json, route, HttpError } from '@/lib/http';
++import { audit } from '@/lib/audit';
++import { logger } from '@/lib/logger';
++import { sendMail } from '@/lib/mailer';
++import { env } from '@/lib/env';
++import { hasActiveAccess } from '@/repos/careTeam';
++import { cancelBooked, getCancelContext } from '@/repos/appointments';
++
++type Ctx = { params: Promise<{ id: string }> };
++
++/** The appointment's patient or practitioner cancels it; the other party is emailed generically. */
++export const POST = route<Ctx>(async (req, ctx) => {
++  const user = await requireUser(req);
++  const { id } = await ctx.params;
++
++  const appt = await getCancelContext(id);
++  if (!appt || appt.org_id !== user.orgId) throw new HttpError(404, 'not_found');
++
++  let recipient: string | null;
++  if (user.role === 'patient' && user.patientId && user.patientId === appt.patient_id) {
++    recipient = appt.practitioner_email;
++  } else if (
++    user.role === 'practitioner' &&
++    user.practitionerId === appt.practitioner_id &&
++    (await hasActiveAccess(appt.practitioner_id, appt.patient_id))
++  ) {
++    recipient = appt.patient_email;
++  } else {
++    throw new HttpError(404, 'not_found');
++  }
++
++  if (!(await cancelBooked(appt.id))) throw new HttpError(409, 'not_cancellable');
++  await audit(user, 'appointment.cancel', 'appointment', appt.id);
++
++  if (recipient) {
++    try {
++      await sendMail({
++        to: recipient,
++        subject: 'An appointment was cancelled',
++        text: `An appointment was cancelled. Details are in the portal: ${env.appBaseUrl}/appointments/${appt.id}`,
++      });
++    } catch (err) {
++      logger.error('appointment cancel mail failed', {
++        appointmentId: appt.id,
++        code: (err as { code?: string }).code,
++      });
++    }
++  }
++  return json({ id: appt.id, status: 'cancelled' });
++});
+diff --git a/src/repos/appointments.ts b/src/repos/appointments.ts
+index 1eb9821..07f2dde 100644
+--- a/src/repos/appointments.ts
++++ b/src/repos/appointments.ts
+@@ -1,4 +1,4 @@
+-import { execute, query } from '@/lib/db';
++import { execute, query, queryOne } from '@/lib/db';
+ import { newId } from '@/lib/ids';
+ import { utcDayBounds } from '@/lib/time';
+ 
+@@ -60,3 +60,34 @@ export async function createAppointment(input: {
+   );
+   return id;
+ }
++
++export interface CancelContext {
++  id: string;
++  org_id: string;
++  patient_id: string;
++  practitioner_id: string;
++  status: 'booked' | 'cancelled' | 'completed';
++  patient_email: string | null;
++  practitioner_email: string;
++}
++
++/** Narrow lookup for cancelling: ids, status and the two contact emails only. */
++export async function getCancelContext(id: string): Promise<CancelContext | null> {
++  return queryOne<CancelContext>(
++    `SELECT a.id, a.org_id, a.patient_id, a.practitioner_id, a.status,
++            COALESCE(pu.email, p.email) AS patient_email, pru.email AS practitioner_email
++       FROM appointments a
++       JOIN patients p ON p.id = a.patient_id
++       JOIN practitioners pr ON pr.id = a.practitioner_id
++       JOIN users pru ON pru.id = pr.user_id
++       LEFT JOIN users pu ON pu.id = p.user_id
++      WHERE a.id = ?`,
++    [id],
++  );
++}
++
++/** Marks a booked appointment cancelled. Returns false if it was not in 'booked' status. */
++export async function cancelBooked(id: string): Promise<boolean> {
++  const res = await execute("UPDATE appointments SET status = 'cancelled' WHERE id = ? AND status = 'booked'", [id]);
++  return res.affectedRows > 0;
++}
+diff --git a/tests/appointment-cancel.test.ts b/tests/appointment-cancel.test.ts
+new file mode 100644
+index 0000000..c99f6b4
+--- /dev/null
++++ b/tests/appointment-cancel.test.ts
+@@ -0,0 +1,53 @@
++import { describe, expect, it, vi } from 'vitest';
++import { POST } from '@/app/api/appointments/[id]/cancel/route';
++import { mailOutbox } from '@/lib/mailer';
++import { query } from '@/lib/db';
++import { call, TOKENS } from './helpers';
++
++const cancel = (id: string, token?: string) =>
++  call(POST, { method: 'POST', path: `/api/appointments/${id}/cancel`, token, params: { id } });
++const statusOf = async (id: string) =>
++  (await query<{ status: string }>('SELECT status FROM appointments WHERE id = ?', [id]))[0].status;
++
++describe('POST /api/appointments/{id}/cancel', () => {
++  it('rejects unauthenticated callers', async () => {
++    expect((await cancel('apt_001')).status).toBe(401);
++  });
++
++  it('404s for other patients, other practitioners, other practice, admin, and unknown ids', async () => {
++    for (const token of [TOKENS.theo, TOKENS.malik, TOKENS.hal, TOKENS.june, TOKENS.dana]) {
++      const res = await cancel('apt_001', token);
++      expect(res.status).toBe(404);
++    }
++    expect((await cancel('apt_nope', TOKENS.ava)).status).toBe(404);
++    expect(await statusOf('apt_001')).toBe('booked');
++    expect(mailOutbox).toHaveLength(0);
++  });
++
++  it('patient cancels: practitioner gets a generic email, no PHI, no PHI in logs', async () => {
++    const out = vi.spyOn(process.stdout, 'write');
++    const errw = vi.spyOn(process.stderr, 'write');
++    const res = await cancel('apt_001', TOKENS.ava);
++    expect(res.status).toBe(200);
++    expect(res.json).toEqual({ id: 'apt_001', status: 'cancelled' });
++    expect(await statusOf('apt_001')).toBe('cancelled');
++    expect(mailOutbox).toHaveLength(1);
++    const mail = mailOutbox[0];
++    const blob = JSON.stringify(mail);
++    for (const s of ['Ava', 'sleep', 'anxiety', 'diary']) expect(blob).not.toContain(s);
++    const logged = [...out.mock.calls, ...errw.mock.calls].map((c) => String(c[0])).join('');
++    for (const s of ['Ava', 'sleep', 'ava@']) expect(logged).not.toContain(s);
++    vi.restoreAllMocks();
++  });
++
++  it('practitioner cancels: patient is emailed; second cancel is 409', async () => {
++    mailOutbox.length = 0;
++    const res = await cancel('apt_002', TOKENS.rosa);
++    expect(res.status).toBe(200);
++    expect(mailOutbox).toHaveLength(1);
++    const blob = JSON.stringify(mailOutbox[0]);
++    for (const s of ['Theo', 'Rosa', 'Relapse']) expect(blob).not.toContain(s);
++    expect((await cancel('apt_002', TOKENS.rosa)).status).toBe(409);
++    expect(mailOutbox).toHaveLength(1);
++  });
++});

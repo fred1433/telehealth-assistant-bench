@@ -1,0 +1,166 @@
+diff --git a/src/app/api/me/export/route.ts b/src/app/api/me/export/route.ts
+new file mode 100644
+index 0000000..bb48d82
+--- /dev/null
++++ b/src/app/api/me/export/route.ts
+@@ -0,0 +1,42 @@
++import { requireUser } from '@/lib/auth';
++import { json, route, HttpError } from '@/lib/http';
++import { audit } from '@/lib/audit';
++import { getPatient } from '@/repos/patients';
++import { listExportForPatient } from '@/repos/appointments';
++import { listForUserExport } from '@/repos/messages';
++import { listClinicalForPatient } from '@/repos/notes';
++
++/** The signed-in patient's own general record. Psychotherapy notes are never included. */
++export const GET = route(async (req) => {
++  const user = await requireUser(req);
++  if (user.role !== 'patient' || !user.patientId) throw new HttpError(403, 'forbidden');
++  const p = await getPatient(user.patientId);
++  if (!p || p.id !== user.patientId || p.org_id !== user.orgId) throw new HttpError(404, 'not_found');
++
++  const [appointments, messages, notes] = await Promise.all([
++    listExportForPatient(p.id),
++    listForUserExport(user.id),
++    listClinicalForPatient(p.id),
++  ]);
++  await audit(user, 'record.export', 'patient', p.id);
++  return json({
++    patient: {
++      id: p.id,
++      firstName: p.first_name,
++      lastName: p.last_name,
++      dateOfBirth: p.date_of_birth,
++      email: p.email,
++      phone: p.phone,
++      mrn: p.mrn,
++    },
++    appointments: appointments.map((a) => ({
++      id: a.id,
++      startsAt: a.starts_at,
++      endsAt: a.ends_at,
++      status: a.status,
++      visitReason: a.visit_reason,
++    })),
++    messages: messages.map((m) => ({ id: m.id, subject: m.subject, body: m.body, sentAt: m.created_at, direction: m.direction })),
++    clinicalNotes: notes.map((n) => ({ id: n.id, createdAt: n.created_at, body: n.body })),
++  });
++});
+diff --git a/src/repos/appointments.ts b/src/repos/appointments.ts
+index 1eb9821..93190c7 100644
+--- a/src/repos/appointments.ts
++++ b/src/repos/appointments.ts
+@@ -23,6 +23,16 @@ export async function listForPatient(patientId: string): Promise<AppointmentRow[
+   );
+ }
+ 
++/** A patient's own appointments for export: no practitioner notes. */
++export async function listExportForPatient(
++  patientId: string,
++): Promise<Array<{ id: string; starts_at: Date; ends_at: Date; status: string; visit_reason: string | null }>> {
++  return query(
++    'SELECT id, starts_at, ends_at, status, visit_reason FROM appointments WHERE patient_id = ? ORDER BY starts_at',
++    [patientId],
++  );
++}
++
+ /**
+  * A practitioner's appointments for one UTC day, limited to patients they still have
+  * access to. Rows include the patient's name for display.
+diff --git a/src/repos/messages.ts b/src/repos/messages.ts
+index 7c73775..55c3f2d 100644
+--- a/src/repos/messages.ts
++++ b/src/repos/messages.ts
+@@ -61,6 +61,20 @@ export async function findWithContext(messageId: string): Promise<Record<string,
+   );
+ }
+ 
++/** Messages a user sent or received, for their own export. Explicit columns only. */
++export async function listForUserExport(
++  userId: string,
++): Promise<Array<{ id: string; subject: string; body: string; created_at: Date; direction: 'sent' | 'received' }>> {
++  return query(
++    `SELECT id, subject, body, created_at,
++            CASE WHEN sender_user_id = ? THEN 'sent' ELSE 'received' END AS direction
++       FROM messages
++      WHERE sender_user_id = ? OR recipient_user_id = ?
++      ORDER BY created_at`,
++    [userId, userId, userId],
++  );
++}
++
+ export async function getMessage(messageId: string): Promise<MessageRow | null> {
+   return queryOne<MessageRow>('SELECT * FROM messages WHERE id = ?', [messageId]);
+ }
+diff --git a/src/repos/notes.ts b/src/repos/notes.ts
+index 8fbcff4..796a007 100644
+--- a/src/repos/notes.ts
++++ b/src/repos/notes.ts
+@@ -9,6 +9,11 @@ export interface NoteRow {
+   body: string;
+ }
+ 
++/** General-record clinical notes only (never psychotherapy notes), for patient export. */
++export async function listClinicalForPatient(patientId: string): Promise<Array<{ id: string; created_at: Date; body: string }>> {
++  return query('SELECT id, created_at, body FROM clinical_notes WHERE patient_id = ? ORDER BY created_at', [patientId]);
++}
++
+ /** All notes for a patient, newest first, for the practitioner chart view. */
+ export async function listForPatient(patientId: string): Promise<NoteRow[]> {
+   return query<NoteRow>(
+diff --git a/tests/export.test.ts b/tests/export.test.ts
+new file mode 100644
+index 0000000..93d4e1c
+--- /dev/null
++++ b/tests/export.test.ts
+@@ -0,0 +1,50 @@
++import { describe, expect, it, vi } from 'vitest';
++import { GET } from '@/app/api/me/export/route';
++import { call, TOKENS } from './helpers';
++
++describe('GET /api/me/export', () => {
++  it('exports the patient own general record only', async () => {
++    const res = await call(GET, { token: TOKENS.ava, path: '/api/me/export' });
++    expect(res.status).toBe(200);
++    expect(res.json.patient.id).toBe('pt_ava');
++    expect(res.json.patient.mrn).toBeTruthy();
++    expect(res.json.clinicalNotes.map((n: any) => n.id).sort()).toEqual(['cn_001', 'cn_002']);
++    expect(res.json.messages.map((m: any) => [m.id, m.direction]).sort()).toEqual([
++      ['msg_001', 'received'],
++      ['msg_002', 'sent'],
++    ]);
++    expect(res.json.appointments.map((a: any) => a.id)).toEqual(expect.arrayContaining(['apt_001', 'apt_004']));
++    expect(res.text).not.toContain('Process notes');
++    expect(res.text).not.toContain('pn_001');
++    expect(res.text).not.toContain('Bring sleep diary');
++    expect(res.text).not.toContain('Relapse prevention');
++    expect(res.text).not.toContain('shame');
++  });
++
++  it('does not leak another patient record', async () => {
++    const res = await call(GET, { token: TOKENS.theo });
++    expect(res.status).toBe(200);
++    expect(res.json.patient.id).toBe('pt_theo');
++    expect(res.text).not.toContain('Before Thursday');
++    expect(res.text).not.toContain('Intake assessment');
++    expect(res.json.clinicalNotes.map((n: any) => n.id)).toEqual(['cn_003']);
++  });
++
++  it('refuses other roles and unauthenticated callers', async () => {
++    for (const t of [TOKENS.rosa, TOKENS.dana, TOKENS.hal]) {
++      expect((await call(GET, { token: t })).status).toBe(403);
++    }
++    expect((await call(GET)).status).toBe(401);
++  });
++
++  it('logs nothing from the record', async () => {
++    const out = vi.spyOn(process.stdout, 'write');
++    const err = vi.spyOn(process.stderr, 'write');
++    await call(GET, { token: TOKENS.ava });
++    const logged = [...out.mock.calls, ...err.mock.calls].map((c) => String(c[0])).join('');
++    out.mockRestore();
++    err.mockRestore();
++    expect(logged).not.toContain('Ava');
++    expect(logged).not.toContain('sleep');
++  });
++});

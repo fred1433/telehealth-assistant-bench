@@ -1,0 +1,94 @@
+diff --git a/src/lib/http.ts b/src/lib/http.ts
+index 4e3f736..76c48a0 100644
+--- a/src/lib/http.ts
++++ b/src/lib/http.ts
+@@ -1,5 +1,7 @@
+ import { NextResponse } from 'next/server';
++import { randomBytes } from 'node:crypto';
+ import { ZodError } from 'zod';
++import { logger } from './logger';
+ 
+ export class HttpError extends Error {
+   constructor(public readonly status: number, public readonly publicMessage: string) {
+@@ -11,6 +13,21 @@ export function json(data: unknown, status = 200): NextResponse {
+   return NextResponse.json(data, { status });
+ }
+ 
++/**
++ * Diagnostic summary of an error without its message: driver messages and SQL can embed
++ * row values (patient data), so only the type and codes are logged.
++ */
++function safeCause(err: unknown): Record<string, unknown> {
++  if (!(err instanceof Error)) return { name: typeof err };
++  const e = err as unknown as Record<string, unknown>;
++  const out: Record<string, unknown> = { name: err.name };
++  for (const k of ['code', 'errno', 'sqlState']) if (e[k] !== undefined) out[k] = e[k];
++  // MySQL "Unknown column 'x'" style messages name schema objects, not values.
++  const m = typeof e.sqlMessage === 'string' ? /^(Unknown column '[\w.]+' in '[\w ]+')/.exec(e.sqlMessage) : null;
++  if (m) out.detail = m[1];
++  return out;
++}
++
+ type Handler<C> = (req: Request, ctx: C) => Promise<Response>;
+ 
+ /**
+@@ -24,7 +41,13 @@ export function route<C = unknown>(handler: Handler<C>): Handler<C> {
+     } catch (err) {
+       if (err instanceof HttpError) return json({ error: err.publicMessage }, err.status);
+       if (err instanceof ZodError) return json({ error: 'invalid_request' }, 400);
+-      return new Response(null, { status: 500 });
++      const errorId = `err_${randomBytes(8).toString('hex')}`;
++      logger.error('unhandled route error', {
++        errorId,
++        route: `${req.method} ${new URL(req.url).pathname}`,
++        cause: safeCause(err),
++      });
++      return json({ errorId }, 500);
+     }
+   };
+ }
+diff --git a/src/repos/appointments.ts b/src/repos/appointments.ts
+index 1eb9821..f39f3ad 100644
+--- a/src/repos/appointments.ts
++++ b/src/repos/appointments.ts
+@@ -54,7 +54,7 @@ export async function createAppointment(input: {
+ }): Promise<string> {
+   const id = newId('apt');
+   await execute(
+-    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by)
++    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'booked', ?, ?)`,
+     [id, input.orgId, input.patientId, input.practitionerId, input.startsAt, input.endsAt, input.visitReason, input.createdByUserId],
+   );
+diff --git a/tests/appointments.test.ts b/tests/appointments.test.ts
+index 7ef316b..eb97624 100644
+--- a/tests/appointments.test.ts
++++ b/tests/appointments.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from 'vitest';
+-import { GET } from '@/app/api/appointments/route';
++import { GET, POST } from '@/app/api/appointments/route';
+ import { call, TOKENS } from './helpers';
+ 
+ describe('GET /api/appointments', () => {
+@@ -16,3 +16,20 @@ describe('GET /api/appointments', () => {
+     expect(res.status).toBe(403);
+   });
+ });
++
++describe('POST /api/appointments', () => {
++  it('books an appointment with a care-team practitioner', async () => {
++    const res = await call(POST, {
++      method: 'POST',
++      token: TOKENS.ava,
++      body: {
++        practitionerId: 'pr_rosa',
++        startsAt: '2030-01-01T15:00:00.000Z',
++        endsAt: '2030-01-01T15:50:00.000Z',
++        visitReason: 'Check-in',
++      },
++    });
++    expect(res.status).toBe(201);
++    expect(res.json.id).toMatch(/^apt_/);
++  });
++});

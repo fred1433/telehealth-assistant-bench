@@ -1,0 +1,163 @@
+diff --git a/src/app/api/admin/care-team/revoke/route.ts b/src/app/api/admin/care-team/revoke/route.ts
+index 214a4d0..724f36e 100644
+--- a/src/app/api/admin/care-team/revoke/route.ts
++++ b/src/app/api/admin/care-team/revoke/route.ts
+@@ -4,6 +4,7 @@ import { json, readJson, route, HttpError } from '@/lib/http';
+ import { audit } from '@/lib/audit';
+ import { getPatient } from '@/repos/patients';
+ import { getPractitioner } from '@/repos/practitioners';
++import { invalidateDayView } from '@/lib/scheduleCache';
+ import { revokeAccess } from '@/repos/careTeam';
+ 
+ const Body = z.object({ practitionerId: z.string().min(1), patientId: z.string().min(1) });
+@@ -18,6 +19,7 @@ export const POST = route(async (req) => {
+     throw new HttpError(404, 'not_found');
+   }
+   const changed = await revokeAccess(practitioner.id, patient.id);
++  await invalidateDayView(practitioner.id);
+   await audit(user, 'care_team.revoke', 'patient', patient.id);
+   return json({ revoked: changed });
+ });
+diff --git a/src/app/api/practitioner/schedule/today/route.ts b/src/app/api/practitioner/schedule/today/route.ts
+index 378dfa1..caa12ab 100644
+--- a/src/app/api/practitioner/schedule/today/route.ts
++++ b/src/app/api/practitioner/schedule/today/route.ts
+@@ -1,6 +1,7 @@
+ import { requireUser } from '@/lib/auth';
+ import { json, route, HttpError } from '@/lib/http';
+ import { todayUtc } from '@/lib/time';
++import { cachedDayView } from '@/lib/scheduleCache';
+ import { listForPractitionerOnDay } from '@/repos/appointments';
+ 
+ /** The signed-in practitioner's appointments for today (UTC), for the day view. */
+@@ -8,15 +9,19 @@ export const GET = route(async (req) => {
+   const user = await requireUser(req);
+   if (user.role !== 'practitioner' || !user.practitionerId) throw new HttpError(403, 'forbidden');
+   const day = todayUtc();
+-  const rows = await listForPractitionerOnDay(user.practitionerId, day);
+-  return json({
+-    day,
+-    appointments: rows.map((a) => ({
+-      id: a.id,
+-      startsAt: a.starts_at,
+-      endsAt: a.ends_at,
+-      status: a.status,
+-      patient: { id: a.patient_id, firstName: a.patient_first_name, lastName: a.patient_last_name },
+-    })),
++  const practitionerId = user.practitionerId;
++  const body = await cachedDayView(practitionerId, day, async () => {
++    const rows = await listForPractitionerOnDay(practitionerId, day);
++    return {
++      day,
++      appointments: rows.map((a) => ({
++        id: a.id,
++        startsAt: a.starts_at,
++        endsAt: a.ends_at,
++        status: a.status,
++        patient: { id: a.patient_id, firstName: a.patient_first_name, lastName: a.patient_last_name },
++      })),
++    };
+   });
++  return json(body);
+ });
+diff --git a/src/lib/scheduleCache.ts b/src/lib/scheduleCache.ts
+new file mode 100644
+index 0000000..97467bc
+--- /dev/null
++++ b/src/lib/scheduleCache.ts
+@@ -0,0 +1,49 @@
++import { getRedis, KEY_PREFIX } from './redis';
++import { logger } from './logger';
++
++/**
++ * Cache of a practitioner's day view. Keys hold only the practitioner id, the day and a
++ * version number. Values are the already-mapped response (no visit reasons or notes).
++ * Entries live 30 s; the version key lives 15 min, so an entry can never outlive the
++ * version it was written under.
++ */
++const ENTRY_TTL_S = 30;
++const VERSION_TTL_S = 15 * 60;
++
++const versionKey = (practitionerId: string) => `${KEY_PREFIX}schedver:${practitionerId}`;
++const entryKey = (practitionerId: string, day: string, v: string) =>
++  `${KEY_PREFIX}sched:${practitionerId}:${day}:${v}`;
++
++export async function cachedDayView<T>(practitionerId: string, day: string, load: () => Promise<T>): Promise<T> {
++  let key: string | undefined;
++  try {
++    const redis = getRedis();
++    const v = (await redis.get(versionKey(practitionerId))) ?? '0';
++    key = entryKey(practitionerId, day, v);
++    const hit = await redis.get(key);
++    if (hit) return JSON.parse(hit) as T;
++  } catch (err) {
++    logger.warn('schedule cache read failed', { code: (err as { code?: string }).code });
++    key = undefined;
++  }
++  const value = await load();
++  if (key) {
++    try {
++      await getRedis().set(key, JSON.stringify(value), 'EX', ENTRY_TTL_S);
++    } catch (err) {
++      logger.warn('schedule cache write failed', { code: (err as { code?: string }).code });
++    }
++  }
++  return value;
++}
++
++/** Invalidates every cached day view of a practitioner (bumps the version). */
++export async function invalidateDayView(practitionerId: string): Promise<void> {
++  try {
++    const redis = getRedis();
++    await redis.incr(versionKey(practitionerId));
++    await redis.expire(versionKey(practitionerId), VERSION_TTL_S);
++  } catch (err) {
++    logger.warn('schedule cache invalidate failed', { code: (err as { code?: string }).code });
++  }
++}
+diff --git a/tests/scheduleCache.test.ts b/tests/scheduleCache.test.ts
+new file mode 100644
+index 0000000..5c8611e
+--- /dev/null
++++ b/tests/scheduleCache.test.ts
+@@ -0,0 +1,40 @@
++import { describe, expect, it } from 'vitest';
++import { GET } from '@/app/api/practitioner/schedule/today/route';
++import { POST as REVOKE } from '@/app/api/admin/care-team/revoke/route';
++import { call, TOKENS } from './helpers';
++import { getRedis, KEY_PREFIX } from '@/lib/redis';
++
++describe('day view cache', () => {
++  it('writes keys without patient ids, with a TTL, and no clinical content', async () => {
++    const first = await call(GET, { token: TOKENS.rosa });
++    expect(first.status).toBe(200);
++    const redis = getRedis();
++    const keys = (await redis.keys(`${KEY_PREFIX}sched*`)).filter((k) => k.includes('pr_rosa'));
++    expect(keys.length).toBeGreaterThan(0);
++    for (const k of keys) {
++      expect(k).not.toMatch(/pt_/);
++      const ttl = await redis.ttl(k);
++      expect(ttl).toBeGreaterThan(0);
++      expect(ttl).toBeLessThanOrEqual(900);
++      const v = await redis.get(k);
++      expect(v ?? '').not.toContain('Follow-up on sleep');
++      expect(v ?? '').not.toContain('Bring sleep diary');
++    }
++    const second = await call(GET, { token: TOKENS.rosa });
++    expect(second.json).toEqual(first.json);
++  });
++
++  it("does not show one practitioner's day to another", async () => {
++    await call(GET, { token: TOKENS.rosa });
++    const res = await call(GET, { token: TOKENS.malik });
++    expect(res.json.appointments.map((a: { id: string }) => a.id)).toEqual(['apt_003']);
++  });
++
++  it('drops a revoked patient on the next call', async () => {
++    await call(GET, { token: TOKENS.rosa });
++    const rev = await call(REVOKE, { method: 'POST', token: TOKENS.dana, body: { practitionerId: 'pr_rosa', patientId: 'pt_theo' } });
++    expect(rev.status).toBe(200);
++    const res = await call(GET, { token: TOKENS.rosa });
++    expect(res.json.appointments.map((a: { id: string }) => a.id)).toEqual(['apt_001']);
++  });
++});

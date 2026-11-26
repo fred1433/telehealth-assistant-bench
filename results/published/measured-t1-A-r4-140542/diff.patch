@@ -1,0 +1,61 @@
+diff --git a/src/app/api/messages/route.ts b/src/app/api/messages/route.ts
+index 0898c08..4cacc83 100644
+--- a/src/app/api/messages/route.ts
++++ b/src/app/api/messages/route.ts
+@@ -4,6 +4,7 @@ import { json, readJson, route, HttpError } from '@/lib/http';
+ import { logger } from '@/lib/logger';
+ import { audit } from '@/lib/audit';
+ import { getUser } from '@/repos/users';
++import { notifyNewSecureMessage } from '@/lib/notify';
+ import { createMessage, listInbox } from '@/repos/messages';
+ 
+ const SendBody = z.object({
+@@ -49,5 +50,6 @@ export const POST = route(async (req) => {
+   });
+   await audit(user, 'message.send', 'message', id);
+   logger.info('message sent', { messageId: id, senderId: user.id, recipientId: recipient.id });
++  await notifyNewSecureMessage(recipient, id);
+   return json({ id }, 201);
+ });
+diff --git a/src/lib/notify.ts b/src/lib/notify.ts
+new file mode 100644
+index 0000000..b90d697
+--- /dev/null
++++ b/src/lib/notify.ts
+@@ -0,0 +1,36 @@
++import { env } from './env';
++import { logger } from './logger';
++import { sendMail } from './mailer';
++import { sendPush } from './push';
++import { listPushTokens } from '@/repos/devices';
++
++/**
++ * Tells a user a secure message is waiting. Content is deliberately generic (no PHI).
++ * Never throws: failures are logged with ids only.
++ */
++export async function notifyNewSecureMessage(recipient: { id: string; email: string }, messageId: string): Promise<void> {
++  try {
++    await sendMail({
++      to: recipient.email,
++      subject: 'You have a new secure message',
++      text: `A new secure message is waiting for you. Please sign in to read it: ${env.appBaseUrl}`,
++    });
++  } catch {
++    logger.warn('message email notification failed', { messageId, recipientId: recipient.id });
++  }
++  try {
++    const tokens = await listPushTokens(recipient.id);
++    for (const token of tokens) {
++      try {
++        await sendPush({
++          token,
++          notification: { title: 'New secure message', body: 'A new secure message is waiting. Sign in to read it.' },
++        });
++      } catch {
++        logger.warn('message push notification failed', { messageId, recipientId: recipient.id });
++      }
++    }
++  } catch {
++    logger.warn('message push lookup failed', { messageId, recipientId: recipient.id });
++  }
++}

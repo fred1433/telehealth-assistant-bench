@@ -1,0 +1,96 @@
+diff --git a/src/app/api/messages/[id]/route.ts b/src/app/api/messages/[id]/route.ts
+new file mode 100644
+index 0000000..416fb55
+--- /dev/null
++++ b/src/app/api/messages/[id]/route.ts
+@@ -0,0 +1,23 @@
++import { requireUser } from '@/lib/auth';
++import { json, route, HttpError } from '@/lib/http';
++import { audit } from '@/lib/audit';
++import { getForRecipient, markRead } from '@/repos/messages';
++
++type Ctx = { params: Promise<{ id: string }> };
++
++/** The recipient opens a message; anyone else gets 404. Marks it read. */
++export const GET = route<Ctx>(async (req, { params }) => {
++  const user = await requireUser(req);
++  const { id } = await params;
++  const m = await getForRecipient(id, user.id);
++  if (!m) throw new HttpError(404, 'not_found');
++  await markRead(m.id);
++  await audit(user, 'message.read', 'message', m.id);
++  return json({
++    id: m.id,
++    subject: m.subject,
++    body: m.body,
++    sentAt: m.created_at,
++    from: { name: m.sender_name },
++  });
++});
+diff --git a/src/repos/messages.ts b/src/repos/messages.ts
+index 7c73775..2075ed2 100644
+--- a/src/repos/messages.ts
++++ b/src/repos/messages.ts
+@@ -65,6 +65,19 @@ export async function getMessage(messageId: string): Promise<MessageRow | null>
+   return queryOne<MessageRow>('SELECT * FROM messages WHERE id = ?', [messageId]);
+ }
+ 
++/** A message as shown to its recipient: only the columns the reader view needs. Null unless `recipientUserId` is the recipient. */
++export async function getForRecipient(
++  messageId: string,
++  recipientUserId: string,
++): Promise<{ id: string; subject: string; body: string; created_at: Date; sender_name: string } | null> {
++  return queryOne(
++    `SELECT m.id, m.subject, m.body, m.created_at, u.display_name AS sender_name
++       FROM messages m JOIN users u ON u.id = m.sender_user_id
++      WHERE m.id = ? AND m.recipient_user_id = ?`,
++    [messageId, recipientUserId],
++  );
++}
++
+ export async function markRead(messageId: string): Promise<void> {
+   await execute('UPDATE messages SET read_at = UTC_TIMESTAMP(3) WHERE id = ? AND read_at IS NULL', [messageId]);
+ }
+diff --git a/tests/messages.test.ts b/tests/messages.test.ts
+index 9ddaa69..5b0ff53 100644
+--- a/tests/messages.test.ts
++++ b/tests/messages.test.ts
+@@ -1,5 +1,6 @@
+ import { describe, expect, it } from 'vitest';
+ import { GET, POST } from '@/app/api/messages/route';
++import { GET as GET_ONE } from '@/app/api/messages/[id]/route';
+ import { call, TOKENS } from './helpers';
+ 
+ describe('POST /api/messages', () => {
+@@ -28,6 +29,31 @@ describe('POST /api/messages', () => {
+   });
+ });
+ 
++describe('GET /api/messages/{id}', () => {
++  const path = '/api/messages/msg_001';
++  const params = { id: 'msg_001' };
++  it('lets the recipient read it, with exactly the documented fields, and marks it read', async () => {
++    const res = await call(GET_ONE, { token: TOKENS.ava, path, params });
++    expect(res.status).toBe(200);
++    expect(Object.keys(res.json).sort()).toEqual(['body', 'from', 'id', 'sentAt', 'subject']);
++    expect(Object.keys(res.json.from)).toEqual(['name']);
++    const inbox = await call(GET, { token: TOKENS.ava });
++    expect(inbox.json.messages.find((m: any) => m.id === 'msg_001').read).toBe(true);
++  });
++  it('404s for the sender, other users, admins and other practices', async () => {
++    for (const token of [TOKENS.rosa, TOKENS.theo, TOKENS.dana, TOKENS.hal, TOKENS.june]) {
++      const res = await call(GET_ONE, { token, path, params });
++      expect(res.status).toBe(404);
++      expect(res.text).not.toContain('sleep diary');
++    }
++    const missing = await call(GET_ONE, { token: TOKENS.ava, path, params: { id: 'msg_nope' } });
++    expect(missing.status).toBe(404);
++  });
++  it('requires authentication', async () => {
++    expect((await call(GET_ONE, { path, params })).status).toBe(401);
++  });
++});
++
+ describe('GET /api/messages', () => {
+   it('lists the inbox without message bodies', async () => {
+     const res = await call(GET, { token: TOKENS.ava });

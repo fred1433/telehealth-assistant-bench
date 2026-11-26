@@ -1,0 +1,108 @@
+diff --git a/src/lib/http.ts b/src/lib/http.ts
+index 4e3f736..61da344 100644
+--- a/src/lib/http.ts
++++ b/src/lib/http.ts
+@@ -1,5 +1,7 @@
+ import { NextResponse } from 'next/server';
+ import { ZodError } from 'zod';
++import { logger } from './logger';
++import { newId } from './ids';
+ 
+ export class HttpError extends Error {
+   constructor(public readonly status: number, public readonly publicMessage: string) {
+@@ -24,7 +26,26 @@ export function route<C = unknown>(handler: Handler<C>): Handler<C> {
+     } catch (err) {
+       if (err instanceof HttpError) return json({ error: err.publicMessage }, err.status);
+       if (err instanceof ZodError) return json({ error: 'invalid_request' }, 400);
+-      return new Response(null, { status: 500 });
++      const errorId = newId('err');
++      // Only the path (no query string), error name and driver code: never the message,
++      // `sql` or `sqlMessage`, which can contain bound patient values.
++      let path = 'unknown';
++      try {
++        path = new URL(req.url).pathname;
++      } catch {
++        /* keep default */
++      }
++      const e = err as { name?: unknown; code?: unknown } | null;
++      const cause = {
++        name: typeof e?.name === 'string' ? e.name : 'unknown',
++        code: typeof e?.code === 'string' ? e.code : undefined,
++      };
++      try {
++        logger.error('unhandled route error', { errorId, route: `${req.method} ${path}`, cause });
++      } catch {
++        /* logging must not mask the response */
++      }
++      return json({ errorId }, 500);
+     }
+   };
+ }
+diff --git a/src/repos/appointments.ts b/src/repos/appointments.ts
+index 1eb9821..f39f3ad 100644
+--- a/src/repos/appointments.ts
++++ b/src/repos/appointments.ts
+@@ -54,7 +54,7 @@ export async function createAppointment(input: {
+ }): Promise<string> {
+   const id = newId('apt');
+   await execute(
+-    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by)
++    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'booked', ?, ?)`,
+     [id, input.orgId, input.patientId, input.practitionerId, input.startsAt, input.endsAt, input.visitReason, input.createdByUserId],
+   );
+diff --git a/tests/booking.test.ts b/tests/booking.test.ts
+new file mode 100644
+index 0000000..05bdbf0
+--- /dev/null
++++ b/tests/booking.test.ts
+@@ -0,0 +1,49 @@
++import { afterEach, describe, expect, it, vi } from 'vitest';
++import { POST } from '@/app/api/appointments/route';
++import * as appts from '@/repos/appointments';
++import { call, TOKENS } from './helpers';
++
++const REASON = 'zzdistinctivereason';
++const body = {
++  practitionerId: 'pr_rosa',
++  startsAt: '2030-01-01T10:00:00.000Z',
++  endsAt: '2030-01-01T10:30:00.000Z',
++  visitReason: REASON,
++};
++
++afterEach(() => vi.restoreAllMocks());
++
++describe('POST /api/appointments', () => {
++  it('books and returns the new id', async () => {
++    const res = await call(POST, { method: 'POST', token: TOKENS.ava, body });
++    expect(res.status).toBe(201);
++    expect(res.json.id).toMatch(/^apt_/);
++  });
++
++  it('rejects other roles and unauthenticated callers', async () => {
++    expect((await call(POST, { method: 'POST', token: TOKENS.rosa, body })).status).toBe(403);
++    expect((await call(POST, { method: 'POST', body })).status).toBe(401);
++  });
++
++  it('returns an errorId and logs a PHI-free line on unexpected failure', async () => {
++    const err = Object.assign(new Error(`Duplicate entry 'ava@x' ${REASON}`), {
++      code: 'ER_DUP_ENTRY',
++      sql: `INSERT ... '${REASON}'`,
++      sqlMessage: `Duplicate entry '${REASON}'`,
++    });
++    vi.spyOn(appts, 'createAppointment').mockRejectedValue(err);
++    const out = vi.spyOn(process.stdout, 'write');
++    const errw = vi.spyOn(process.stderr, 'write');
++    const res = await call(POST, { method: 'POST', path: '/api/appointments', token: TOKENS.ava, body });
++    expect(res.status).toBe(500);
++    expect(Object.keys(res.json)).toEqual(['errorId']);
++    const logged = [...out.mock.calls, ...errw.mock.calls].map((c) => String(c[0])).join('');
++    expect(logged).toContain(res.json.errorId);
++    expect(logged).toContain('/api/appointments');
++    expect(logged).toContain('ER_DUP_ENTRY');
++    for (const s of [REASON, 'ava@', 'INSERT', 'Duplicate']) {
++      expect(logged).not.toContain(s);
++      expect(res.text).not.toContain(s);
++    }
++  });
++});

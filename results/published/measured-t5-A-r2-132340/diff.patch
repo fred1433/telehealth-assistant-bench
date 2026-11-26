@@ -1,0 +1,89 @@
+diff --git a/src/lib/http.ts b/src/lib/http.ts
+index 4e3f736..29fd4d7 100644
+--- a/src/lib/http.ts
++++ b/src/lib/http.ts
+@@ -1,5 +1,32 @@
+ import { NextResponse } from 'next/server';
++import { randomUUID } from 'node:crypto';
+ import { ZodError } from 'zod';
++import { logger } from './logger';
++
++/** Method + path only (no query string). */
++function routeName(req: Request): string {
++  try {
++    return `${req.method} ${new URL(req.url).pathname}`;
++  } catch {
++    return req.method;
++  }
++}
++
++/**
++ * Describes the underlying cause without content: no SQL or parameters, and quoted
++ * values in driver messages (which may echo row data) are masked.
++ */
++function safeCause(err: unknown): Record<string, unknown> {
++  if (!(err instanceof Error)) return { type: typeof err };
++  const e = err as Error & { code?: unknown; errno?: unknown; sqlState?: unknown };
++  return {
++    name: e.name,
++    code: e.code,
++    errno: e.errno,
++    sqlState: e.sqlState,
++    message: e.message.replace(/'[^']*'/g, '?').replace(/"[^"]*"/g, '?').slice(0, 300),
++  };
++}
+ 
+ export class HttpError extends Error {
+   constructor(public readonly status: number, public readonly publicMessage: string) {
+@@ -24,7 +51,9 @@ export function route<C = unknown>(handler: Handler<C>): Handler<C> {
+     } catch (err) {
+       if (err instanceof HttpError) return json({ error: err.publicMessage }, err.status);
+       if (err instanceof ZodError) return json({ error: 'invalid_request' }, 400);
+-      return new Response(null, { status: 500 });
++      const errorId = `err_${randomUUID()}`;
++      logger.error('unhandled route error', { errorId, route: routeName(req), cause: safeCause(err) });
++      return json({ errorId }, 500);
+     }
+   };
+ }
+diff --git a/src/repos/appointments.ts b/src/repos/appointments.ts
+index 1eb9821..f39f3ad 100644
+--- a/src/repos/appointments.ts
++++ b/src/repos/appointments.ts
+@@ -54,7 +54,7 @@ export async function createAppointment(input: {
+ }): Promise<string> {
+   const id = newId('apt');
+   await execute(
+-    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by)
++    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'booked', ?, ?)`,
+     [id, input.orgId, input.patientId, input.practitionerId, input.startsAt, input.endsAt, input.visitReason, input.createdByUserId],
+   );
+diff --git a/tests/appointments.test.ts b/tests/appointments.test.ts
+index 7ef316b..791c9ea 100644
+--- a/tests/appointments.test.ts
++++ b/tests/appointments.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from 'vitest';
+-import { GET } from '@/app/api/appointments/route';
++import { GET, POST } from '@/app/api/appointments/route';
+ import { call, TOKENS } from './helpers';
+ 
+ describe('GET /api/appointments', () => {
+@@ -11,6 +11,16 @@ describe('GET /api/appointments', () => {
+     expect(ids).not.toContain('apt_002');
+   });
+ 
++  it('books with a care-team practitioner (POST)', async () => {
++    const res = await call(POST, {
++      method: 'POST',
++      token: TOKENS.ava,
++      body: { practitionerId: 'pr_rosa', startsAt: '2030-01-01T10:00:00.000Z', endsAt: '2030-01-01T10:50:00.000Z' },
++    });
++    expect(res.status).toBe(201);
++    expect(res.json.id).toMatch(/^apt_/);
++  });
++
+   it('is for patients only', async () => {
+     const res = await call(GET, { token: TOKENS.rosa });
+     expect(res.status).toBe(403);

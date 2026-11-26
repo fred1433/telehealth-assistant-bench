@@ -1,0 +1,57 @@
+diff --git a/src/app/api/patients/search/route.ts b/src/app/api/patients/search/route.ts
+new file mode 100644
+index 0000000..d46d353
+--- /dev/null
++++ b/src/app/api/patients/search/route.ts
+@@ -0,0 +1,25 @@
++import { z } from 'zod';
++import { requireUser, requireRole } from '@/lib/auth';
++import { json, readJson, route } from '@/lib/http';
++import { searchPatientsByName } from '@/repos/patients';
++
++const SearchBody = z.object({ q: z.string().trim().min(2).max(100) });
++
++/**
++ * Patient search for practitioners. POST with a JSON body (not GET) so the
++ * searched name never appears in the URL / Apache access log.
++ */
++export const POST = route(async (req) => {
++  const user = await requireUser(req);
++  requireRole(user, 'practitioner');
++  const { q } = SearchBody.parse(await readJson(req));
++  const rows = await searchPatientsByName(user.orgId, q, 20);
++  return json({
++    results: rows.map((r) => ({
++      id: r.id,
++      firstName: r.first_name,
++      lastName: r.last_name,
++      dateOfBirth: r.date_of_birth,
++    })),
++  });
++});
+diff --git a/src/repos/patients.ts b/src/repos/patients.ts
+index bf18df1..c125449 100644
+--- a/src/repos/patients.ts
++++ b/src/repos/patients.ts
+@@ -1,4 +1,20 @@
+-import { queryOne } from '@/lib/db';
++import { query, queryOne } from '@/lib/db';
++
++export interface PatientSearchRow {
++  id: string;
++  first_name: string;
++  last_name: string;
++  date_of_birth: Date;
++}
++
++/** Case-insensitive substring match on first or last name within one practice. */
++export async function searchPatientsByName(orgId: string, fragment: string, limit = 20): Promise<PatientSearchRow[]> {
++  const like = '%' + fragment.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
++  return query<PatientSearchRow>(
++    'SELECT id, first_name, last_name, date_of_birth FROM patients WHERE org_id = ? AND (first_name LIKE ? OR last_name LIKE ?) ORDER BY last_name, first_name, id LIMIT ?',
++    [orgId, like, like, limit],
++  );
++}
+ 
+ export interface PatientRow {
+   id: string;

@@ -1,0 +1,1151 @@
+{
+ "model": [
+  "claude-sonnet-5-5"
+ ],
+ "claudeCodeVersion": [
+  "2.1.332"
+ ],
+ "baseRef": [
+  "203066479e8c83e70bc98b40ac52e620cd9e1aa5"
+ ],
+ "maxTurns": [
+  60
+ ],
+ "timeoutMinutes": [
+  25
+ ],
+ "trials": 72,
+ "cells": {
+  "t1": {
+   "A": [
+    {
+     "trial": "measured-t1-A-r1-123829",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 9,
+     "minutes": 0.6,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t1-A-r2-132853",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 9,
+     "minutes": 0.7,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t1-A-r3-134926",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 9,
+     "minutes": 0.7,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t1-A-r4-140542",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 8,
+     "minutes": 0.6,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "B": [
+    {
+     "trial": "measured-t1-B-r1-123513",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 11,
+     "minutes": 1.0,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t1-B-r2-133150",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 13,
+     "minutes": 1.0,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t1-B-r3-135147",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 11,
+     "minutes": 0.8,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t1-B-r4-140805",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 14,
+     "minutes": 0.8,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "C": [
+    {
+     "trial": "measured-t1-C-r1-123627",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 12,
+     "minutes": 1.7,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t1-C-r2-132943",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 12,
+     "minutes": 1.9,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t1-C-r3-135019",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 11,
+     "minutes": 1.3,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t1-C-r4-140632",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 11,
+     "minutes": 1.4,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ]
+  },
+  "t2": {
+   "A": [
+    {
+     "trial": "measured-t2-A-r1-124125",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 6,
+     "minutes": 0.9,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t2-A-r2-130659",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 8,
+     "minutes": 1.0,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t2-A-r3-135245",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 6,
+     "minutes": 0.6,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t2-A-r4-140905",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 5,
+     "minutes": 0.5,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "B": [
+    {
+     "trial": "measured-t2-B-r1-124236",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 7,
+     "minutes": 1.1,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t2-B-r2-130815",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 9,
+     "minutes": 1.4,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t2-B-r3-135333",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 9,
+     "minutes": 0.8,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t2-B-r4-140947",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 9,
+     "minutes": 0.7,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "C": [
+    {
+     "trial": "measured-t2-C-r1-123923",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 13,
+     "minutes": 1.9,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t2-C-r2-130523",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 10,
+     "minutes": 1.4,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t2-C-r3-135431",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 8,
+     "minutes": 0.9,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t2-C-r4-141036",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 9,
+     "minutes": 0.9,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ]
+  },
+  "t3": {
+   "A": [
+    {
+     "trial": "measured-t3-A-r1-124357",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 10,
+     "minutes": 0.7,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t3-A-r2-130950",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 8,
+     "minutes": 0.9,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t3-A-r3-133304",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 10,
+     "minutes": 1.0,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t3-A-r4-141343",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 9,
+     "minutes": 1.1,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "B": [
+    {
+     "trial": "measured-t3-B-r1-124700",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 8,
+     "minutes": 1.2,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t3-B-r2-131317",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 11,
+     "minutes": 1.5,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t3-B-r3-133557",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 13,
+     "minutes": 1.0,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t3-B-r4-141137",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 9,
+     "minutes": 0.7,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "C": [
+    {
+     "trial": "measured-t3-C-r1-124454",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 15,
+     "minutes": 1.9,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t3-C-r2-131104",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 13,
+     "minutes": 2.0,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t3-C-r3-133417",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 12,
+     "minutes": 1.5,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t3-C-r4-141225",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 16,
+     "minutes": 1.1,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ]
+  },
+  "t4": {
+   "A": [
+    {
+     "trial": "measured-t4-A-r1-124825",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 12,
+     "minutes": 1.1,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t4-A-r2-131506",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 4,
+     "minutes": 1.8,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t4-A-r3-133712",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 5,
+     "minutes": 0.8,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t4-A-r4-135542",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 8,
+     "minutes": 0.6,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "B": [
+    {
+     "trial": "measured-t4-B-r1-124943",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 14,
+     "minutes": 1.1,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t4-B-r2-131709",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 13,
+     "minutes": 1.5,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t4-B-r3-133809",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 12,
+     "minutes": 1.1,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t4-B-r4-135630",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 15,
+     "minutes": 0.9,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "C": [
+    {
+     "trial": "measured-t4-C-r1-125105",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 13,
+     "minutes": 1.7,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t4-C-r2-131853",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 12,
+     "minutes": 1.9,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t4-C-r3-133928",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 12,
+     "minutes": 1.6,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t4-C-r4-135732",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 17,
+     "minutes": 1.3,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ]
+  },
+  "t5": {
+   "A": [
+    {
+     "trial": "measured-t5-A-r1-125601",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 7,
+     "minutes": 1.1,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t5-A-r2-132340",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 17,
+     "minutes": 1.6,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t5-A-r3-134357",
+     "rep": 3,
+     "state": "function_failed",
+     "places": [],
+     "failedChecks": [
+      "one log line with error id, route and cause"
+     ],
+     "turns": 10,
+     "minutes": 1.5,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t5-A-r4-140133",
+     "rep": 4,
+     "state": "function_failed",
+     "places": [],
+     "failedChecks": [
+      "one log line with error id, route and cause"
+     ],
+     "turns": 7,
+     "minutes": 0.8,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "B": [
+    {
+     "trial": "measured-t5-B-r1-125302",
+     "rep": 1,
+     "state": "function_failed",
+     "places": [],
+     "failedChecks": [
+      "one log line with error id, route and cause"
+     ],
+     "turns": 16,
+     "minutes": 1.0,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t5-B-r2-132058",
+     "rep": 2,
+     "state": "function_failed",
+     "places": [],
+     "failedChecks": [
+      "one log line with error id, route and cause"
+     ],
+     "turns": 14,
+     "minutes": 0.9,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t5-B-r3-134117",
+     "rep": 3,
+     "state": "function_failed",
+     "places": [],
+     "failedChecks": [
+      "one log line with error id, route and cause"
+     ],
+     "turns": 13,
+     "minutes": 1.0,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t5-B-r4-135859",
+     "rep": 4,
+     "state": "function_failed",
+     "places": [],
+     "failedChecks": [
+      "one log line with error id, route and cause"
+     ],
+     "turns": 17,
+     "minutes": 1.0,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "C": [
+    {
+     "trial": "measured-t5-C-r1-125420",
+     "rep": 1,
+     "state": "function_failed",
+     "places": [],
+     "failedChecks": [
+      "one log line with error id, route and cause"
+     ],
+     "turns": 17,
+     "minutes": 1.5,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t5-C-r2-132203",
+     "rep": 2,
+     "state": "function_failed",
+     "places": [],
+     "failedChecks": [
+      "one log line with error id, route and cause"
+     ],
+     "turns": 16,
+     "minutes": 1.4,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t5-C-r3-134232",
+     "rep": 3,
+     "state": "blocked",
+     "places": [],
+     "failedChecks": [
+      "one log line with error id, route and cause"
+     ],
+     "turns": 13,
+     "minutes": 1.2,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t5-C-r4-140017",
+     "rep": 4,
+     "state": "function_failed",
+     "places": [],
+     "failedChecks": [
+      "one log line with error id, route and cause"
+     ],
+     "turns": 14,
+     "minutes": 1.1,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ]
+  },
+  "t6": {
+   "A": [
+    {
+     "trial": "measured-t6-A-r1-130057",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 12,
+     "minutes": 2.3,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t6-A-r2-132648",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 13,
+     "minutes": 0.9,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t6-A-r3-134706",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 12,
+     "minutes": 1.0,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t6-A-r4-140343",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 11,
+     "minutes": 0.8,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "B": [
+    {
+     "trial": "measured-t6-B-r1-130329",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 11,
+     "minutes": 1.6,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t6-B-r2-132751",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 11,
+     "minutes": 0.9,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t6-B-r3-134818",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 12,
+     "minutes": 1.0,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t6-B-r4-140437",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 13,
+     "minutes": 0.9,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ],
+   "C": [
+    {
+     "trial": "measured-t6-C-r1-125736",
+     "rep": 1,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 13,
+     "minutes": 2.9,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t6-C-r2-132527",
+     "rep": 2,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 11,
+     "minutes": 1.2,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t6-C-r3-134543",
+     "rep": 3,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 11,
+     "minutes": 1.3,
+     "guardBlocks": 1,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    },
+    {
+     "trial": "measured-t6-C-r4-140235",
+     "rep": 4,
+     "state": "pass",
+     "places": [],
+     "failedChecks": [],
+     "turns": 10,
+     "minutes": 0.9,
+     "guardBlocks": 0,
+     "verifyReruns": 0,
+     "protectedAttempts": 0,
+     "interrupted": null
+    }
+   ]
+  }
+ },
+ "perTask": {
+  "t1": {
+   "A": {
+    "pass": 4,
+    "n": 4
+   },
+   "B": {
+    "pass": 4,
+    "n": 4
+   },
+   "C": {
+    "pass": 4,
+    "n": 4
+   }
+  },
+  "t2": {
+   "A": {
+    "pass": 4,
+    "n": 4
+   },
+   "B": {
+    "pass": 4,
+    "n": 4
+   },
+   "C": {
+    "pass": 4,
+    "n": 4
+   }
+  },
+  "t3": {
+   "A": {
+    "pass": 4,
+    "n": 4
+   },
+   "B": {
+    "pass": 4,
+    "n": 4
+   },
+   "C": {
+    "pass": 4,
+    "n": 4
+   }
+  },
+  "t4": {
+   "A": {
+    "pass": 4,
+    "n": 4
+   },
+   "B": {
+    "pass": 4,
+    "n": 4
+   },
+   "C": {
+    "pass": 4,
+    "n": 4
+   }
+  },
+  "t5": {
+   "A": {
+    "pass": 2,
+    "n": 4
+   },
+   "B": {
+    "pass": 0,
+    "n": 4
+   },
+   "C": {
+    "pass": 0,
+    "n": 4
+   }
+  },
+  "t6": {
+   "A": {
+    "pass": 4,
+    "n": 4
+   },
+   "B": {
+    "pass": 4,
+    "n": 4
+   },
+   "C": {
+    "pass": 4,
+    "n": 4
+   }
+  }
+ },
+ "totals": {
+  "A": {
+   "pass": 22,
+   "n": 24,
+   "ciLow": 0.742,
+   "ciHigh": 0.977,
+   "states": {
+    "pass": 22,
+    "function_failed": 2,
+    "boundary": 0,
+    "blocked": 0,
+    "interrupted": 0
+   }
+  },
+  "B": {
+   "pass": 20,
+   "n": 24,
+   "ciLow": 0.641,
+   "ciHigh": 0.933,
+   "states": {
+    "pass": 20,
+    "function_failed": 4,
+    "boundary": 0,
+    "blocked": 0,
+    "interrupted": 0
+   }
+  },
+  "C": {
+   "pass": 20,
+   "n": 24,
+   "ciLow": 0.641,
+   "ciHigh": 0.933,
+   "states": {
+    "pass": 20,
+    "function_failed": 3,
+    "boundary": 0,
+    "blocked": 1,
+    "interrupted": 0
+   }
+  }
+ }
+}

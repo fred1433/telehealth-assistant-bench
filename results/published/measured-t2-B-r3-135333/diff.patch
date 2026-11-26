@@ -1,0 +1,96 @@
+diff --git a/src/app/api/messages/[id]/route.ts b/src/app/api/messages/[id]/route.ts
+new file mode 100644
+index 0000000..68cb072
+--- /dev/null
++++ b/src/app/api/messages/[id]/route.ts
+@@ -0,0 +1,25 @@
++import { requireUser } from '@/lib/auth';
++import { json, route, HttpError } from '@/lib/http';
++import { audit } from '@/lib/audit';
++import { getForRecipient, markRead } from '@/repos/messages';
++
++type Ctx = { params: Promise<{ id: string }> };
++
++/** Opens a message for its recipient (and only the recipient) and marks it read. */
++export const GET = route<Ctx>(async (req, { params }) => {
++  const user = await requireUser(req);
++  const { id } = await params;
++
++  const msg = await getForRecipient(id, user.id);
++  if (!msg) throw new HttpError(404, 'not_found');
++
++  await markRead(msg.id);
++  await audit(user, 'message.read', 'message', msg.id);
++  return json({
++    id: msg.id,
++    subject: msg.subject,
++    body: msg.body,
++    sentAt: msg.created_at,
++    from: { name: msg.sender_name },
++  });
++});
+diff --git a/src/repos/messages.ts b/src/repos/messages.ts
+index 7c73775..b82397b 100644
+--- a/src/repos/messages.ts
++++ b/src/repos/messages.ts
+@@ -65,6 +65,19 @@ export async function getMessage(messageId: string): Promise<MessageRow | null>
+   return queryOne<MessageRow>('SELECT * FROM messages WHERE id = ?', [messageId]);
+ }
+ 
++/** Message as shown to its recipient: explicit columns, only if `recipientUserId` is the recipient. */
++export async function getForRecipient(
++  messageId: string,
++  recipientUserId: string,
++): Promise<{ id: string; subject: string; body: string; created_at: Date; sender_name: string } | null> {
++  return queryOne(
++    `SELECT m.id, m.subject, m.body, m.created_at, u.display_name AS sender_name
++       FROM messages m JOIN users u ON u.id = m.sender_user_id
++      WHERE m.id = ? AND m.recipient_user_id = ?`,
++    [messageId, recipientUserId],
++  );
++}
++
+ export async function markRead(messageId: string): Promise<void> {
+   await execute('UPDATE messages SET read_at = UTC_TIMESTAMP(3) WHERE id = ? AND read_at IS NULL', [messageId]);
+ }
+diff --git a/tests/messages.test.ts b/tests/messages.test.ts
+index 9ddaa69..599edbe 100644
+--- a/tests/messages.test.ts
++++ b/tests/messages.test.ts
+@@ -28,6 +28,36 @@ describe('POST /api/messages', () => {
+   });
+ });
+ 
++describe('GET /api/messages/{id}', () => {
++  const open = async (token: string | undefined, id = 'msg_001') => {
++    const { GET: GET_ONE } = await import('@/app/api/messages/[id]/route');
++    return call(GET_ONE, { token, path: `/api/messages/${id}`, params: { id } });
++  };
++
++  it('requires authentication', async () => {
++    expect((await open(undefined)).status).toBe(401);
++  });
++
++  it('hides the message from non-recipients, other roles, admins and other practices', async () => {
++    for (const t of [TOKENS.rosa, TOKENS.theo, TOKENS.dana, TOKENS.hal, TOKENS.june]) {
++      const res = await open(t);
++      expect(res.status).toBe(404);
++      expect(res.text).not.toContain('sleep diary');
++    }
++    expect((await open(TOKENS.ava, 'msg_nope')).status).toBe(404);
++  });
++
++  it('returns exactly the allowed fields to the recipient and marks it read', async () => {
++    const res = await open(TOKENS.ava);
++    expect(res.status).toBe(200);
++    expect(Object.keys(res.json).sort()).toEqual(['body', 'from', 'id', 'sentAt', 'subject']);
++    expect(Object.keys(res.json.from)).toEqual(['name']);
++    expect(res.json.id).toBe('msg_001');
++    const inbox = await call(GET, { token: TOKENS.ava });
++    expect(inbox.json.messages.find((m: any) => m.id === 'msg_001').read).toBe(true);
++  });
++});
++
+ describe('GET /api/messages', () => {
+   it('lists the inbox without message bodies', async () => {
+     const res = await call(GET, { token: TOKENS.ava });

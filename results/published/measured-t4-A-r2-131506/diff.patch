@@ -1,0 +1,84 @@
+diff --git a/src/app/api/admin/care-team/revoke/route.ts b/src/app/api/admin/care-team/revoke/route.ts
+index 214a4d0..af1a945 100644
+--- a/src/app/api/admin/care-team/revoke/route.ts
++++ b/src/app/api/admin/care-team/revoke/route.ts
+@@ -4,6 +4,7 @@ import { json, readJson, route, HttpError } from '@/lib/http';
+ import { audit } from '@/lib/audit';
+ import { getPatient } from '@/repos/patients';
+ import { getPractitioner } from '@/repos/practitioners';
++import { invalidateDayView } from '@/lib/dayViewCache';
+ import { revokeAccess } from '@/repos/careTeam';
+ 
+ const Body = z.object({ practitionerId: z.string().min(1), patientId: z.string().min(1) });
+@@ -18,6 +19,7 @@ export const POST = route(async (req) => {
+     throw new HttpError(404, 'not_found');
+   }
+   const changed = await revokeAccess(practitioner.id, patient.id);
++  await invalidateDayView(practitioner.id);
+   await audit(user, 'care_team.revoke', 'patient', patient.id);
+   return json({ revoked: changed });
+ });
+diff --git a/src/app/api/practitioner/schedule/today/route.ts b/src/app/api/practitioner/schedule/today/route.ts
+index 378dfa1..68ac492 100644
+--- a/src/app/api/practitioner/schedule/today/route.ts
++++ b/src/app/api/practitioner/schedule/today/route.ts
+@@ -2,14 +2,26 @@ import { requireUser } from '@/lib/auth';
+ import { json, route, HttpError } from '@/lib/http';
+ import { todayUtc } from '@/lib/time';
+ import { listForPractitionerOnDay } from '@/repos/appointments';
++import { getRedis } from '@/lib/redis';
++import { dayViewKey, DAY_VIEW_TTL_SECONDS } from '@/lib/dayViewCache';
+ 
+ /** The signed-in practitioner's appointments for today (UTC), for the day view. */
+ export const GET = route(async (req) => {
+   const user = await requireUser(req);
+   if (user.role !== 'practitioner' || !user.practitionerId) throw new HttpError(403, 'forbidden');
+   const day = todayUtc();
++  const key = dayViewKey(user.practitionerId);
++  try {
++    const hit = await getRedis().get(key);
++    if (hit) {
++      const cached = JSON.parse(hit);
++      if (cached.day === day) return json(cached);
++    }
++  } catch {
++    // cache failure falls through to the database
++  }
+   const rows = await listForPractitionerOnDay(user.practitionerId, day);
+-  return json({
++  const body = {
+     day,
+     appointments: rows.map((a) => ({
+       id: a.id,
+@@ -18,5 +30,11 @@ export const GET = route(async (req) => {
+       status: a.status,
+       patient: { id: a.patient_id, firstName: a.patient_first_name, lastName: a.patient_last_name },
+     })),
+-  });
++  };
++  try {
++    await getRedis().set(key, JSON.stringify(body), 'EX', DAY_VIEW_TTL_SECONDS);
++  } catch {
++    // ignore cache write failures
++  }
++  return json(body);
+ });
+diff --git a/src/lib/dayViewCache.ts b/src/lib/dayViewCache.ts
+new file mode 100644
+index 0000000..56c7931
+--- /dev/null
++++ b/src/lib/dayViewCache.ts
+@@ -0,0 +1,13 @@
++import { getRedis, KEY_PREFIX } from './redis';
++
++/** Day-view cache lifetime; well under the 15 minute ceiling. */
++export const DAY_VIEW_TTL_SECONDS = 300;
++
++/** Keyed by practitioner id only (no patient identifiers); the cached value carries its day. */
++export function dayViewKey(practitionerId: string): string {
++  return `${KEY_PREFIX}dayview:${practitionerId}`;
++}
++
++export async function invalidateDayView(practitionerId: string): Promise<void> {
++  await getRedis().del(dayViewKey(practitionerId));
++}

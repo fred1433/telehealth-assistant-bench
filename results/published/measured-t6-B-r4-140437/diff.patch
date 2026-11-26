@@ -1,0 +1,138 @@
+diff --git a/src/app/api/patients/search/route.ts b/src/app/api/patients/search/route.ts
+new file mode 100644
+index 0000000..dd0f57b
+--- /dev/null
++++ b/src/app/api/patients/search/route.ts
+@@ -0,0 +1,24 @@
++import { z } from 'zod';
++import { requireUser } from '@/lib/auth';
++import { audit } from '@/lib/audit';
++import { HttpError, json, readJson, route } from '@/lib/http';
++import { searchForPractitioner } from '@/repos/patients';
++
++const Body = z.object({ q: z.string().trim().min(2).max(80) });
++
++/** POST (not GET): the searched name must never appear in a URL / Apache access log. */
++export const POST = route(async (req) => {
++  const user = await requireUser(req);
++  if (user.role !== 'practitioner' || !user.practitionerId) throw new HttpError(403, 'forbidden');
++  const { q } = Body.parse(await readJson(req));
++  const rows = await searchForPractitioner(user.orgId, user.practitionerId, q, 20);
++  for (const r of rows) await audit(user, 'patient.search', 'patient', r.id);
++  return json({
++    results: rows.map((r) => ({
++      id: r.id,
++      firstName: r.first_name,
++      lastName: r.last_name,
++      dateOfBirth: r.date_of_birth,
++    })),
++  });
++});
+diff --git a/src/repos/patients.ts b/src/repos/patients.ts
+index bf18df1..682f961 100644
+--- a/src/repos/patients.ts
++++ b/src/repos/patients.ts
+@@ -1,4 +1,4 @@
+-import { queryOne } from '@/lib/db';
++import { query, queryOne } from '@/lib/db';
+ 
+ export interface PatientRow {
+   id: string;
+@@ -21,3 +21,30 @@ export async function getPatient(patientId: string): Promise<PatientRow | null>
+ export async function getPatientByUserId(userId: string): Promise<PatientRow | null> {
+   return queryOne<PatientRow>('SELECT * FROM patients WHERE user_id = ?', [userId]);
+ }
++
++export interface PatientSearchHit {
++  id: string;
++  first_name: string;
++  last_name: string;
++  date_of_birth: Date;
++}
++
++/** Name-fragment search within one org, limited to patients the practitioner has active care-team access to. */
++export async function searchForPractitioner(
++  orgId: string,
++  practitionerId: string,
++  fragment: string,
++  limit = 20,
++): Promise<PatientSearchHit[]> {
++  const escaped = fragment.replace(/[\\%_]/g, (c) => `\\${c}`);
++  const like = `%${escaped}%`;
++  return query<PatientSearchHit>(
++    `SELECT p.id, p.first_name, p.last_name, p.date_of_birth
++       FROM patients p
++       JOIN care_team ct ON ct.patient_id = p.id AND ct.practitioner_id = ? AND ct.active = 1
++      WHERE p.org_id = ? AND (p.first_name LIKE ? OR p.last_name LIKE ?)
++      ORDER BY p.last_name, p.first_name, p.id
++      LIMIT ?`,
++    [practitionerId, orgId, like, like, limit],
++  );
++}
+diff --git a/tests/patient-search.test.ts b/tests/patient-search.test.ts
+new file mode 100644
+index 0000000..5ad5b4a
+--- /dev/null
++++ b/tests/patient-search.test.ts
+@@ -0,0 +1,61 @@
++import { afterEach, describe, expect, it, vi } from 'vitest';
++import { POST } from '@/app/api/patients/search/route';
++import { call, TOKENS } from './helpers';
++
++const search = (token: string | undefined, q: unknown) =>
++  call(POST, { method: 'POST', path: '/api/patients/search', token, body: { q } });
++
++describe('POST /api/patients/search', () => {
++  afterEach(() => vi.restoreAllMocks());
++
++  it('matches first or last name, anywhere, case-insensitively', async () => {
++    const res = await search(TOKENS.rosa, 'LIND');
++    expect(res.status).toBe(200);
++    expect(res.json.results).toEqual([
++      { id: 'pt_ava', firstName: 'Ava', lastName: 'Lindqvist', dateOfBirth: expect.any(String) },
++    ]);
++    const mid = await search(TOKENS.rosa, 'archet');
++    expect(mid.json.results.map((r: { id: string }) => r.id)).toEqual(['pt_theo']);
++  });
++
++  it('returns only the allow-listed fields', async () => {
++    const res = await search(TOKENS.rosa, 'Ava');
++    expect(Object.keys(res.json.results[0]).sort()).toEqual(['dateOfBirth', 'firstName', 'id', 'lastName']);
++    expect(res.text).not.toContain('JH-000101');
++    expect(res.text).not.toContain('anxiety');
++    expect(res.text).not.toContain('@mail.example');
++  });
++
++  it('does not return patients of another practice or outside the care team', async () => {
++    expect((await search(TOKENS.rosa, 'June')).json.results).toEqual([]);
++    expect((await search(TOKENS.rosa, 'Priya')).json.results).toEqual([]);
++    expect((await search(TOKENS.hal, 'Ava')).json.results).toEqual([]);
++  });
++
++  it('treats LIKE wildcards literally', async () => {
++    expect((await search(TOKENS.rosa, '%%')).json.results).toEqual([]);
++    expect((await search(TOKENS.rosa, '__')).json.results).toEqual([]);
++  });
++
++  it('rejects short or malformed queries with 400', async () => {
++    expect((await search(TOKENS.rosa, 'a')).status).toBe(400);
++    expect((await search(TOKENS.rosa, ' a ')).status).toBe(400);
++    expect((await search(TOKENS.rosa, 42)).status).toBe(400);
++  });
++
++  it('is for practitioners only', async () => {
++    expect((await search(TOKENS.ava, 'Ava')).status).toBe(403);
++    expect((await search(TOKENS.dana, 'Ava')).status).toBe(403);
++    expect((await search(undefined, 'Ava')).status).toBe(401);
++  });
++
++  it('does not log the searched name or any patient name', async () => {
++    const out = vi.spyOn(process.stdout, 'write');
++    const err = vi.spyOn(process.stderr, 'write');
++    await search(TOKENS.rosa, 'Lindqvist');
++    await search(TOKENS.rosa, 'a');
++    const logged = [...out.mock.calls, ...err.mock.calls].map((c) => String(c[0])).join('');
++    expect(logged).not.toContain('Lindqvist');
++    expect(logged).not.toContain('Marchetti');
++  });
++});

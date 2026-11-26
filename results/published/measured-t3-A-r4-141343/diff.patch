@@ -1,0 +1,108 @@
+diff --git a/src/app/api/me/export/route.ts b/src/app/api/me/export/route.ts
+new file mode 100644
+index 0000000..7cdb418
+--- /dev/null
++++ b/src/app/api/me/export/route.ts
+@@ -0,0 +1,47 @@
++import { requireUser } from '@/lib/auth';
++import { audit } from '@/lib/audit';
++import { json, route, HttpError } from '@/lib/http';
++import { getPatient } from '@/repos/patients';
++import { listForPatient as listAppointments } from '@/repos/appointments';
++import { listForUser as listMessages } from '@/repos/messages';
++import { listClinicalForPatient } from '@/repos/notes';
++
++/** The signed-in patient's own general record. Excludes psychotherapy notes. */
++export const GET = route(async (req) => {
++  const user = await requireUser(req);
++  if (user.role !== 'patient' || !user.patientId) throw new HttpError(403, 'forbidden');
++  const p = await getPatient(user.patientId);
++  if (!p) throw new HttpError(404, 'not_found');
++  const [appts, msgs, notes] = await Promise.all([
++    listAppointments(p.id),
++    listMessages(user.id),
++    listClinicalForPatient(p.id),
++  ]);
++  await audit(user, 'export', 'patient', p.id);
++  return json({
++    patient: {
++      id: p.id,
++      firstName: p.first_name,
++      lastName: p.last_name,
++      dateOfBirth: p.date_of_birth,
++      email: p.email,
++      phone: p.phone,
++      mrn: p.mrn,
++    },
++    appointments: appts.map((a) => ({
++      id: a.id,
++      startsAt: a.starts_at,
++      endsAt: a.ends_at,
++      status: a.status,
++      visitReason: a.visit_reason,
++    })),
++    messages: msgs.map((m) => ({
++      id: m.id,
++      subject: m.subject,
++      body: m.body,
++      sentAt: m.created_at,
++      direction: m.sender_user_id === user.id ? 'sent' : 'received',
++    })),
++    clinicalNotes: notes.map((n) => ({ id: n.id, createdAt: n.created_at, body: n.body })),
++  });
++});
+diff --git a/src/repos/messages.ts b/src/repos/messages.ts
+index 7c73775..22b310d 100644
+--- a/src/repos/messages.ts
++++ b/src/repos/messages.ts
+@@ -68,3 +68,11 @@ export async function getMessage(messageId: string): Promise<MessageRow | null>
+ export async function markRead(messageId: string): Promise<void> {
+   await execute('UPDATE messages SET read_at = UTC_TIMESTAMP(3) WHERE id = ? AND read_at IS NULL', [messageId]);
+ }
++
++/** Every message a user sent or received, oldest first (for the patient's own export). */
++export async function listForUser(userId: string): Promise<MessageRow[]> {
++  return query<MessageRow>(
++    'SELECT * FROM messages WHERE sender_user_id = ? OR recipient_user_id = ? ORDER BY created_at, id',
++    [userId, userId],
++  );
++}
+diff --git a/src/repos/notes.ts b/src/repos/notes.ts
+index 8fbcff4..aaf61de 100644
+--- a/src/repos/notes.ts
++++ b/src/repos/notes.ts
+@@ -19,3 +19,8 @@ export async function listForPatient(patientId: string): Promise<NoteRow[]> {
+     [patientId, patientId],
+   );
+ }
++
++/** General-record notes only; psychotherapy_notes are never read here. */
++export async function listClinicalForPatient(patientId: string): Promise<Array<{ id: string; created_at: Date; body: string }>> {
++  return query('SELECT id, created_at, body FROM clinical_notes WHERE patient_id = ? ORDER BY created_at, id', [patientId]);
++}
+diff --git a/tests/export.test.ts b/tests/export.test.ts
+new file mode 100644
+index 0000000..d83f8ac
+--- /dev/null
++++ b/tests/export.test.ts
+@@ -0,0 +1,20 @@
++import { describe, expect, it } from 'vitest';
++import { call, TOKENS } from './helpers';
++import { GET } from '@/app/api/me/export/route';
++
++describe('GET /api/me/export', () => {
++  it('returns the patient record without psychotherapy notes', async () => {
++    const r = await call(GET, { token: TOKENS.ava, path: '/api/me/export' });
++    expect(r.status).toBe(200);
++    expect(r.json.patient.mrn).toBeTruthy();
++    expect(Array.isArray(r.json.appointments)).toBe(true);
++    expect(Array.isArray(r.json.clinicalNotes)).toBe(true);
++    for (const m of r.json.messages) expect(['sent', 'received']).toContain(m.direction);
++    expect(r.json.psychotherapyNotes).toBeUndefined();
++  });
++  it('rejects other roles and anonymous', async () => {
++    expect((await call(GET, { token: TOKENS.rosa })).status).toBe(403);
++    expect((await call(GET, { token: TOKENS.dana })).status).toBe(403);
++    expect((await call(GET)).status).toBe(401);
++  });
++});

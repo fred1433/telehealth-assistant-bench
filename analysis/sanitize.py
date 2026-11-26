@@ -12,7 +12,7 @@ SUBS = [
     (re.compile(r'/private/tmp/thb-adaptive/(?:w|done)/[^/\s"\\]+/repo'), '/work/repo'),
     (re.compile(r'/private/tmp/thb-adaptive/(?:w|done)/[^/\s"\\]+'), '/work'),
     (re.compile(r'/private/tmp/thb-adaptive'), '/bench'),
-    (re.compile(r'(/private)?/tmp/claude-501/[^\s"\\]*'), '/tmp/claude-sandbox'),
+    (re.compile(r'(/private)?/tmp/claude-501(?:/[^\s"\\`]*)?'), '/tmp/claude-sandbox'),
     (re.compile(re.escape(str(DEMO))), '/bench-repo'),
     (re.compile(re.escape(HOME)), '/home/operator'),
     (re.compile(r'\.claude-account\d'), '.claude'),

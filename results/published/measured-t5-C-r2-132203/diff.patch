@@ -1,0 +1,131 @@
+diff --git a/src/app/api/appointments/route.ts b/src/app/api/appointments/route.ts
+index 7035170..c96c033 100644
+--- a/src/app/api/appointments/route.ts
++++ b/src/app/api/appointments/route.ts
+@@ -55,4 +55,4 @@ export const POST = route(async (req) => {
+   });
+   await audit(user, 'appointment.book', 'appointment', id);
+   return json({ id }, 201);
+-});
++}, 'POST /api/appointments');
+diff --git a/src/lib/http.ts b/src/lib/http.ts
+index 4e3f736..8b41706 100644
+--- a/src/lib/http.ts
++++ b/src/lib/http.ts
+@@ -1,5 +1,7 @@
+ import { NextResponse } from 'next/server';
+ import { ZodError } from 'zod';
++import { logger } from './logger';
++import { newId } from './ids';
+ 
+ export class HttpError extends Error {
+   constructor(public readonly status: number, public readonly publicMessage: string) {
+@@ -17,14 +19,36 @@ type Handler<C> = (req: Request, ctx: C) => Promise<Response>;
+  * Wraps a route handler: known HttpErrors become JSON `{ error }` responses,
+  * validation errors become 400, anything else becomes a 500.
+  */
+-export function route<C = unknown>(handler: Handler<C>): Handler<C> {
++export function route<C = unknown>(handler: Handler<C>, name?: string): Handler<C> {
+   return async (req, ctx) => {
+     try {
+       return await handler(req, ctx);
+     } catch (err) {
+       if (err instanceof HttpError) return json({ error: err.publicMessage }, err.status);
+       if (err instanceof ZodError) return json({ error: 'invalid_request' }, 400);
+-      return new Response(null, { status: 500 });
++      const errorId = newId('err');
++      // Only non-identifying fields of the cause: never message/sql/sqlMessage, which can
++      // carry bound values (visit reason, email) from the driver.
++      const e = err as { name?: unknown; code?: unknown; errno?: unknown; sqlState?: unknown };
++      const str = (v: unknown) => (typeof v === 'string' || typeof v === 'number' ? v : undefined);
++      let routeLabel = name;
++      if (!routeLabel) {
++        try {
++          routeLabel = `${req.method} ${new URL(req.url).pathname}`; // path only, no query
++        } catch {
++          routeLabel = 'unknown';
++        }
++      }
++      try {
++        logger.error('unhandled route error', {
++          errorId,
++          route: routeLabel,
++          cause: { name: str(e?.name), code: str(e?.code), errno: str(e?.errno), sqlState: str(e?.sqlState) },
++        });
++      } catch {
++        // logging must never mask the response
++      }
++      return json({ errorId }, 500);
+     }
+   };
+ }
+diff --git a/src/repos/appointments.ts b/src/repos/appointments.ts
+index 1eb9821..f39f3ad 100644
+--- a/src/repos/appointments.ts
++++ b/src/repos/appointments.ts
+@@ -54,7 +54,7 @@ export async function createAppointment(input: {
+ }): Promise<string> {
+   const id = newId('apt');
+   await execute(
+-    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by)
++    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'booked', ?, ?)`,
+     [id, input.orgId, input.patientId, input.practitionerId, input.startsAt, input.endsAt, input.visitReason, input.createdByUserId],
+   );
+diff --git a/tests/appointments.test.ts b/tests/appointments.test.ts
+index 7ef316b..f47dc0c 100644
+--- a/tests/appointments.test.ts
++++ b/tests/appointments.test.ts
+@@ -1,5 +1,5 @@
+-import { describe, expect, it } from 'vitest';
+-import { GET } from '@/app/api/appointments/route';
++import { describe, expect, it, vi } from 'vitest';
++import { GET, POST } from '@/app/api/appointments/route';
+ import { call, TOKENS } from './helpers';
+ 
+ describe('GET /api/appointments', () => {
+@@ -16,3 +16,44 @@ describe('GET /api/appointments', () => {
+     expect(res.status).toBe(403);
+   });
+ });
++
++describe('POST /api/appointments', () => {
++  const body = {
++    practitionerId: 'pr_rosa',
++    startsAt: '2030-01-01T10:00:00.000Z',
++    endsAt: '2030-01-01T10:50:00.000Z',
++    visitReason: 'Secret reason XYZ',
++  };
++
++  it('books an appointment', async () => {
++    const res = await call(POST, { method: 'POST', token: TOKENS.ava, body });
++    expect(res.status).toBe(201);
++    expect(res.json.id).toMatch(/^apt_/);
++  });
++
++  it('returns an errorId and logs a PHI-free line on unexpected failure', async () => {
++    const out = vi.spyOn(process.stdout, 'write');
++    const errw = vi.spyOn(process.stderr, 'write');
++    const repo = await import('@/repos/appointments');
++    const boom = Object.assign(new Error("Duplicate entry 'ava.lindqvist@mail.example'"), {
++      code: 'ER_DUP_ENTRY',
++      sql: "INSERT ... 'Secret reason XYZ'",
++      sqlMessage: "Duplicate entry 'ava.lindqvist@mail.example'",
++    });
++    const spy = vi.spyOn(repo, 'createAppointment').mockRejectedValueOnce(boom);
++    const res = await call(POST, { method: 'POST', path: '/api/appointments', token: TOKENS.ava, body });
++    spy.mockRestore();
++    const logged = [...out.mock.calls, ...errw.mock.calls].map((c) => String(c[0])).join('');
++    out.mockRestore();
++    errw.mockRestore();
++    expect(res.status).toBe(500);
++    expect(Object.keys(res.json)).toEqual(['errorId']);
++    expect(logged).toContain(res.json.errorId);
++    expect(logged).toContain('ER_DUP_ENTRY');
++    expect(logged).toContain('/api/appointments');
++    for (const s of ['Secret reason', 'ava.lindqvist', 'INSERT']) {
++      expect(logged).not.toContain(s);
++      expect(res.text).not.toContain(s);
++    }
++  });
++});

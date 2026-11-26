@@ -1,0 +1,122 @@
+diff --git a/src/app/api/messages/route.ts b/src/app/api/messages/route.ts
+index 0898c08..bf50e67 100644
+--- a/src/app/api/messages/route.ts
++++ b/src/app/api/messages/route.ts
+@@ -3,6 +3,10 @@ import { requireUser, requireRole } from '@/lib/auth';
+ import { json, readJson, route, HttpError } from '@/lib/http';
+ import { logger } from '@/lib/logger';
+ import { audit } from '@/lib/audit';
++import { env } from '@/lib/env';
++import { sendMail } from '@/lib/mailer';
++import { sendPush } from '@/lib/push';
++import { listPushTokens } from '@/repos/devices';
+ import { getUser } from '@/repos/users';
+ import { createMessage, listInbox } from '@/repos/messages';
+ 
+@@ -13,6 +17,44 @@ const SendBody = z.object({
+   body: z.string().min(1).max(10000),
+ });
+ 
++function errCode(e: unknown): string {
++  const code = (e as { code?: unknown } | null)?.code;
++  return typeof code === 'string' ? code : 'unknown';
++}
++
++/** Generic notifications only: no subject, body, names or reasons. Never throws. */
++async function notifyRecipient(messageId: string, recipientId: string, email: string): Promise<void> {
++  try {
++    await sendMail({
++      to: email,
++      subject: 'You have a new secure message',
++      text: `A new secure message is waiting for you. Please sign in to the portal to read it: ${env.appBaseUrl}`,
++    });
++  } catch (e) {
++    const code = errCode(e);
++    logger.error('message email failed', { messageId, recipientId, code });
++  }
++  let tokens: string[] = [];
++  try {
++    tokens = await listPushTokens(recipientId);
++  } catch (e) {
++    const code = errCode(e);
++    logger.error('message push token lookup failed', { messageId, recipientId, code });
++  }
++  for (const token of tokens) {
++    try {
++      await sendPush({
++        token,
++        notification: { title: 'New secure message', body: 'A new secure message is waiting. Sign in to read it.' },
++        data: { type: 'secure_message' },
++      });
++    } catch (e) {
++      const code = errCode(e);
++      logger.error('message push failed', { messageId, recipientId, code });
++    }
++  }
++}
++
+ /** Inbox of the signed-in user (no message bodies). */
+ export const GET = route(async (req) => {
+   const user = await requireUser(req);
+@@ -48,6 +90,7 @@ export const POST = route(async (req) => {
+     body: input.body,
+   });
+   await audit(user, 'message.send', 'message', id);
++  await notifyRecipient(id, recipient.id, recipient.email);
+   logger.info('message sent', { messageId: id, senderId: user.id, recipientId: recipient.id });
+   return json({ id }, 201);
+ });
+diff --git a/tests/message-notify.test.ts b/tests/message-notify.test.ts
+new file mode 100644
+index 0000000..a8ae8e7
+--- /dev/null
++++ b/tests/message-notify.test.ts
+@@ -0,0 +1,48 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++import { POST } from '@/app/api/messages/route';
++import { mailOutbox } from '@/lib/mailer';
++import * as pushLib from '@/lib/push';
++import { call, TOKENS } from './helpers';
++
++const SUBJECT = 'Zebra-subject-xyz';
++const BODY = 'Quokka-body-xyz';
++
++function send() {
++  return call(POST, {
++    method: 'POST',
++    token: TOKENS.rosa,
++    body: { recipientUserId: 'usr_ava', patientId: 'pt_ava', subject: SUBJECT, body: BODY },
++  });
++}
++
++describe('message notifications', () => {
++  beforeEach(() => {
++    mailOutbox.length = 0;
++    pushLib.pushOutbox.length = 0;
++  });
++
++  it('sends one generic email and one push per device', async () => {
++    const res = await send();
++    expect(res.status).toBe(201);
++    expect(mailOutbox).toHaveLength(1);
++    expect(mailOutbox[0].to).toBe('ava.lindqvist@mail.example');
++    expect(pushLib.pushOutbox.map((p) => p.token).sort()).toEqual(['fcm-dev-ava-phone', 'fcm-dev-ava-tablet']);
++    const all = JSON.stringify([mailOutbox, pushLib.pushOutbox]);
++    for (const s of [SUBJECT, BODY, 'Ava', 'Lindqvist', 'Generalized', 'anxiety']) expect(all).not.toContain(s);
++    expect(mailOutbox[0].text).toContain('http');
++  });
++
++  it('still answers 201 when push fails, without logging PHI', async () => {
++    const spy = vi.spyOn(pushLib, 'sendPush').mockRejectedValue(new Error('boom ava.lindqvist@mail.example'));
++    const out = vi.spyOn(process.stdout, 'write');
++    const errw = vi.spyOn(process.stderr, 'write');
++    const res = await send();
++    const logged = [...out.mock.calls, ...errw.mock.calls].map((c) => String(c[0])).join('');
++    spy.mockRestore();
++    out.mockRestore();
++    errw.mockRestore();
++    expect(res.status).toBe(201);
++    expect(logged).not.toContain('ava.lindqvist');
++    expect(logged).not.toContain(SUBJECT);
++  });
++});

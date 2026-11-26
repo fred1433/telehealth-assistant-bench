@@ -1,0 +1,122 @@
+diff --git a/src/app/api/messages/route.ts b/src/app/api/messages/route.ts
+index 0898c08..b6fe0c1 100644
+--- a/src/app/api/messages/route.ts
++++ b/src/app/api/messages/route.ts
+@@ -3,6 +3,10 @@ import { requireUser, requireRole } from '@/lib/auth';
+ import { json, readJson, route, HttpError } from '@/lib/http';
+ import { logger } from '@/lib/logger';
+ import { audit } from '@/lib/audit';
++import { env } from '@/lib/env';
++import { sendMail } from '@/lib/mailer';
++import { sendPush } from '@/lib/push';
++import { listPushTokens } from '@/repos/devices';
+ import { getUser } from '@/repos/users';
+ import { createMessage, listInbox } from '@/repos/messages';
+ 
+@@ -13,6 +17,39 @@ const SendBody = z.object({
+   body: z.string().min(1).max(10000),
+ });
+ 
++function errCode(err: unknown): string {
++  const code = (err as { code?: unknown } | null)?.code;
++  return typeof code === 'string' ? code : 'unknown';
++}
++
++/** Generic "new message" email + push. Never includes message content or patient data; failures are logged by id/code only. */
++async function notifyRecipient(messageId: string, recipientId: string, email: string): Promise<void> {
++  try {
++    await sendMail({
++      to: email,
++      subject: 'You have a new secure message',
++      text: `A new secure message is waiting for you. Sign in to read it: ${env.appBaseUrl}`,
++    });
++  } catch (err) {
++    logger.error('message email failed', { messageId, code: errCode(err) });
++  }
++  try {
++    const tokens = await listPushTokens(recipientId);
++    for (const token of tokens) {
++      try {
++        await sendPush({
++          token,
++          notification: { title: 'New secure message', body: 'A new secure message is waiting. Sign in to read it.' },
++        });
++      } catch (err) {
++        logger.error('message push failed', { messageId, code: errCode(err) });
++      }
++    }
++  } catch (err) {
++    logger.error('message push lookup failed', { messageId, code: errCode(err) });
++  }
++}
++
+ /** Inbox of the signed-in user (no message bodies). */
+ export const GET = route(async (req) => {
+   const user = await requireUser(req);
+@@ -48,6 +85,7 @@ export const POST = route(async (req) => {
+     body: input.body,
+   });
+   await audit(user, 'message.send', 'message', id);
++  await notifyRecipient(id, recipient.id, recipient.email);
+   logger.info('message sent', { messageId: id, senderId: user.id, recipientId: recipient.id });
+   return json({ id }, 201);
+ });
+diff --git a/tests/messages.test.ts b/tests/messages.test.ts
+index 9ddaa69..7efa61a 100644
+--- a/tests/messages.test.ts
++++ b/tests/messages.test.ts
+@@ -1,4 +1,8 @@
+-import { describe, expect, it } from 'vitest';
++import { describe, expect, it, vi } from 'vitest';
++import * as mailer from '@/lib/mailer';
++import { mailOutbox } from '@/lib/mailer';
++import { pushOutbox } from '@/lib/push';
++import { env } from '@/lib/env';
+ import { GET, POST } from '@/app/api/messages/route';
+ import { call, TOKENS } from './helpers';
+ 
+@@ -28,6 +32,44 @@ describe('POST /api/messages', () => {
+   });
+ });
+ 
++describe('POST /api/messages notifications', () => {
++  const send = () =>
++    call(POST, {
++      method: 'POST',
++      token: TOKENS.rosa,
++      body: { recipientUserId: 'usr_ava', patientId: 'pt_ava', subject: 'SecretSubjectXyz', body: 'SecretBodyXyz insomnia' },
++    });
++
++  it('sends one generic email and one push per device, with no PHI', async () => {
++    mailOutbox.length = 0;
++    pushOutbox.length = 0;
++    const res = await send();
++    expect(res.status).toBe(201);
++    expect(mailOutbox).toHaveLength(1);
++    expect(mailOutbox[0].to).toBe('ava.lindqvist@mail.example');
++    expect(mailOutbox[0].text).toContain(env.appBaseUrl);
++    expect(pushOutbox.map((p) => p.token).sort()).toEqual(['fcm-dev-ava-phone', 'fcm-dev-ava-tablet']);
++    const all = JSON.stringify([mailOutbox[0].subject, mailOutbox[0].text, pushOutbox]);
++    for (const phi of ['SecretSubjectXyz', 'SecretBodyXyz', 'insomnia', 'Ava', 'Lindqvist', 'Rosa', 'anxiety']) {
++      expect(all).not.toContain(phi);
++    }
++  });
++
++  it('still answers 201 and logs no PHI when delivery fails', async () => {
++    const out = vi.spyOn(process.stdout, 'write');
++    const errw = vi.spyOn(process.stderr, 'write');
++    const m = vi.spyOn(mailer, 'sendMail').mockRejectedValue(Object.assign(new Error('SecretBodyXyz'), { code: 'ECONNECTION' }));
++    const res = await send();
++    m.mockRestore();
++    const logged = [...out.mock.calls, ...errw.mock.calls].map((c) => String(c[0])).join('');
++    out.mockRestore();
++    errw.mockRestore();
++    expect(res.status).toBe(201);
++    expect(logged).not.toContain('SecretBodyXyz');
++    expect(logged).not.toContain('SecretSubjectXyz');
++  });
++});
++
+ describe('GET /api/messages', () => {
+   it('lists the inbox without message bodies', async () => {
+     const res = await call(GET, { token: TOKENS.ava });

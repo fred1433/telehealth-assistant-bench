@@ -1,0 +1,96 @@
+diff --git a/src/app/api/me/export/route.ts b/src/app/api/me/export/route.ts
+new file mode 100644
+index 0000000..09bac11
+--- /dev/null
++++ b/src/app/api/me/export/route.ts
+@@ -0,0 +1,47 @@
++import { requireUser } from '@/lib/auth';
++import { audit } from '@/lib/audit';
++import { json, route, HttpError } from '@/lib/http';
++import { getPatient } from '@/repos/patients';
++import { listForPatient as listAppointments } from '@/repos/appointments';
++import { listForUserExport } from '@/repos/messages';
++import { listClinicalForPatient } from '@/repos/notes';
++
++/** The signed-in patient's own general record. Excludes psychotherapy notes. */
++export const GET = route(async (req) => {
++  const user = await requireUser(req);
++  if (user.role !== 'patient' || !user.patientId) throw new HttpError(403, 'forbidden');
++  const p = await getPatient(user.patientId);
++  if (!p) throw new HttpError(404, 'not_found');
++  const [appts, msgs, notes] = await Promise.all([
++    listAppointments(p.id),
++    listForUserExport(user.id),
++    listClinicalForPatient(p.id),
++  ]);
++  await audit(user, 'export', 'patient', p.id);
++  return json({
++    patient: {
++      id: p.id,
++      firstName: p.first_name,
++      lastName: p.last_name,
++      dateOfBirth: p.date_of_birth,
++      email: p.email,
++      phone: p.phone,
++      mrn: p.mrn,
++    },
++    appointments: appts.map((a) => ({
++      id: a.id,
++      startsAt: a.starts_at,
++      endsAt: a.ends_at,
++      status: a.status,
++      visitReason: a.visit_reason,
++    })),
++    messages: msgs.map((m) => ({
++      id: m.id,
++      subject: m.subject,
++      body: m.body,
++      sentAt: m.created_at,
++      direction: m.direction,
++    })),
++    clinicalNotes: notes.map((n) => ({ id: n.id, createdAt: n.created_at, body: n.body })),
++  });
++});
+diff --git a/src/repos/messages.ts b/src/repos/messages.ts
+index 7c73775..3ef0334 100644
+--- a/src/repos/messages.ts
++++ b/src/repos/messages.ts
+@@ -65,6 +65,20 @@ export async function getMessage(messageId: string): Promise<MessageRow | null>
+   return queryOne<MessageRow>('SELECT * FROM messages WHERE id = ?', [messageId]);
+ }
+ 
++/** Messages a user sent or received, for the patient's own export. */
++export async function listForUserExport(
++  userId: string,
++): Promise<Array<{ id: string; subject: string; body: string; created_at: Date; direction: 'sent' | 'received' }>> {
++  return query(
++    `SELECT id, subject, body, created_at,
++            CASE WHEN sender_user_id = ? THEN 'sent' ELSE 'received' END AS direction
++       FROM messages
++      WHERE sender_user_id = ? OR recipient_user_id = ?
++      ORDER BY created_at`,
++    [userId, userId, userId],
++  );
++}
++
+ export async function markRead(messageId: string): Promise<void> {
+   await execute('UPDATE messages SET read_at = UTC_TIMESTAMP(3) WHERE id = ? AND read_at IS NULL', [messageId]);
+ }
+diff --git a/src/repos/notes.ts b/src/repos/notes.ts
+index 8fbcff4..787a226 100644
+--- a/src/repos/notes.ts
++++ b/src/repos/notes.ts
+@@ -9,6 +9,13 @@ export interface NoteRow {
+   body: string;
+ }
+ 
++/** General-record clinical notes only; psychotherapy notes are deliberately never read here. */
++export async function listClinicalForPatient(
++  patientId: string,
++): Promise<Array<{ id: string; created_at: Date; body: string }>> {
++  return query('SELECT id, created_at, body FROM clinical_notes WHERE patient_id = ? ORDER BY created_at', [patientId]);
++}
++
+ /** All notes for a patient, newest first, for the practitioner chart view. */
+ export async function listForPatient(patientId: string): Promise<NoteRow[]> {
+   return query<NoteRow>(

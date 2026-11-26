@@ -1,0 +1,105 @@
+diff --git a/src/lib/http.ts b/src/lib/http.ts
+index 4e3f736..7211f9c 100644
+--- a/src/lib/http.ts
++++ b/src/lib/http.ts
+@@ -1,5 +1,7 @@
+ import { NextResponse } from 'next/server';
+ import { ZodError } from 'zod';
++import { randomUUID } from 'node:crypto';
++import { logger } from './logger';
+ 
+ export class HttpError extends Error {
+   constructor(public readonly status: number, public readonly publicMessage: string) {
+@@ -24,7 +26,22 @@ export function route<C = unknown>(handler: Handler<C>): Handler<C> {
+     } catch (err) {
+       if (err instanceof HttpError) return json({ error: err.publicMessage }, err.status);
+       if (err instanceof ZodError) return json({ error: 'invalid_request' }, 400);
+-      return new Response(null, { status: 500 });
++      const errorId = randomUUID();
++      let routePath = 'unknown';
++      try {
++        routePath = new URL(req.url).pathname; // never the query string
++      } catch {}
++      const e = err as { code?: unknown; name?: unknown } | null;
++      // Cause: error name and driver/system code only. Messages and `sql` can carry bound PHI.
++      const causeName = typeof e?.name === 'string' ? e.name : typeof err;
++      const causeCode = typeof e?.code === 'string' || typeof e?.code === 'number' ? e.code : undefined;
++      logger.error('unhandled route error', {
++        errorId,
++        route: `${req.method} ${routePath}`,
++        causeName,
++        causeCode,
++      });
++      return json({ errorId }, 500);
+     }
+   };
+ }
+diff --git a/src/repos/appointments.ts b/src/repos/appointments.ts
+index 1eb9821..f39f3ad 100644
+--- a/src/repos/appointments.ts
++++ b/src/repos/appointments.ts
+@@ -54,7 +54,7 @@ export async function createAppointment(input: {
+ }): Promise<string> {
+   const id = newId('apt');
+   await execute(
+-    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by)
++    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'booked', ?, ?)`,
+     [id, input.orgId, input.patientId, input.practitionerId, input.startsAt, input.endsAt, input.visitReason, input.createdByUserId],
+   );
+diff --git a/tests/appointments.test.ts b/tests/appointments.test.ts
+index 7ef316b..9c61e5b 100644
+--- a/tests/appointments.test.ts
++++ b/tests/appointments.test.ts
+@@ -1,5 +1,6 @@
+-import { describe, expect, it } from 'vitest';
+-import { GET } from '@/app/api/appointments/route';
++import { describe, expect, it, vi } from 'vitest';
++import { GET, POST } from '@/app/api/appointments/route';
++import { route } from '@/lib/http';
+ import { call, TOKENS } from './helpers';
+ 
+ describe('GET /api/appointments', () => {
+@@ -16,3 +17,42 @@ describe('GET /api/appointments', () => {
+     expect(res.status).toBe(403);
+   });
+ });
++
++describe('POST /api/appointments', () => {
++  it('books and returns the id', async () => {
++    const res = await call(POST, {
++      method: 'POST',
++      token: TOKENS.ava,
++      body: {
++        practitionerId: 'pr_rosa',
++        startsAt: '2030-01-01T10:00:00.000Z',
++        endsAt: '2030-01-01T10:30:00.000Z',
++        visitReason: 'insomnia follow-up',
++      },
++    });
++    expect(res.status).toBe(201);
++    expect(res.json.id).toMatch(/^apt_/);
++  });
++
++  it('unexpected failure returns an errorId and logs it without PHI', async () => {
++    const out = vi.spyOn(process.stdout, 'write');
++    const err = vi.spyOn(process.stderr, 'write');
++    const bad = route(async () => {
++      throw Object.assign(new Error('Duplicate entry [account]'), {
++        code: 'ER_DUP_ENTRY',
++        sql: 'INSERT insomnia follow-up',
++        sqlMessage: 'Duplicate entry [account]',
++      });
++    });
++    const res = await call(bad, { method: 'POST', path: '/api/appointments?name=Ava' });
++    const logged = [...out.mock.calls, ...err.mock.calls].map((c) => String(c[0])).join('');
++    out.mockRestore();
++    err.mockRestore();
++    expect(res.status).toBe(500);
++    expect(Object.keys(res.json)).toEqual(['errorId']);
++    expect(logged).toContain(res.json.errorId);
++    expect(logged).toContain('ER_DUP_ENTRY');
++    expect(logged).toContain('/api/appointments');
++    for (const s of ['ava@', 'insomnia', 'INSERT', 'Ava', 'name=']) expect(logged).not.toContain(s);
++  });
++});

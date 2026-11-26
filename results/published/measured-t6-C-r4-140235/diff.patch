@@ -1,0 +1,119 @@
+diff --git a/src/app/api/patients/search/route.ts b/src/app/api/patients/search/route.ts
+new file mode 100644
+index 0000000..4e907c9
+--- /dev/null
++++ b/src/app/api/patients/search/route.ts
+@@ -0,0 +1,25 @@
++import { z } from 'zod';
++import { requireUser, requireRole } from '@/lib/auth';
++import { json, readJson, route, HttpError } from '@/lib/http';
++import { audit } from '@/lib/audit';
++import { searchForPractitioner } from '@/repos/patients';
++
++// The name fragment travels in the POST body, never in the URL (Apache logs request lines).
++const Body = z.object({ q: z.string().trim().min(2).max(80) });
++
++export const POST = route(async (req) => {
++  const user = await requireUser(req);
++  requireRole(user, 'practitioner');
++  if (!user.practitionerId) throw new HttpError(403, 'forbidden');
++  const { q } = Body.parse(await readJson(req));
++  const hits = await searchForPractitioner(user.orgId, user.practitionerId, q);
++  await audit(user, 'patients.search', 'practitioner', user.practitionerId);
++  return json({
++    results: hits.map((h) => ({
++      id: h.id,
++      firstName: h.first_name,
++      lastName: h.last_name,
++      dateOfBirth: h.date_of_birth,
++    })),
++  });
++});
+diff --git a/src/repos/patients.ts b/src/repos/patients.ts
+index bf18df1..2a7052e 100644
+--- a/src/repos/patients.ts
++++ b/src/repos/patients.ts
+@@ -1,4 +1,4 @@
+-import { queryOne } from '@/lib/db';
++import { query, queryOne } from '@/lib/db';
+ 
+ export interface PatientRow {
+   id: string;
+@@ -21,3 +21,28 @@ export async function getPatient(patientId: string): Promise<PatientRow | null>
+ export async function getPatientByUserId(userId: string): Promise<PatientRow | null> {
+   return queryOne<PatientRow>('SELECT * FROM patients WHERE user_id = ?', [userId]);
+ }
++
++export interface PatientSearchHit {
++  id: string;
++  first_name: string;
++  last_name: string;
++  date_of_birth: Date;
++}
++
++/** Name-fragment search over one practitioner's active care team within an org. Explicit columns only. */
++export async function searchForPractitioner(
++  orgId: string,
++  practitionerId: string,
++  fragment: string,
++): Promise<PatientSearchHit[]> {
++  const like = `%${fragment.replace(/[\\%_]/g, '\\$&')}%`;
++  return query<PatientSearchHit>(
++    `SELECT p.id, p.first_name, p.last_name, p.date_of_birth
++       FROM patients p
++       JOIN care_team ct ON ct.patient_id = p.id AND ct.practitioner_id = ? AND ct.active = 1
++      WHERE p.org_id = ? AND (p.first_name LIKE ? OR p.last_name LIKE ?)
++      ORDER BY p.last_name, p.first_name, p.id
++      LIMIT 20`,
++    [practitionerId, orgId, like, like],
++  );
++}
+diff --git a/tests/patient-search.test.ts b/tests/patient-search.test.ts
+new file mode 100644
+index 0000000..ff0b6c7
+--- /dev/null
++++ b/tests/patient-search.test.ts
+@@ -0,0 +1,43 @@
++import { describe, expect, it } from 'vitest';
++import { POST } from '@/app/api/patients/search/route';
++import { call, TOKENS } from './helpers';
++
++const search = (token: string | undefined, q: unknown) =>
++  call(POST, { method: 'POST', path: '/api/patients/search', token, body: { q } });
++
++describe('POST /api/patients/search', () => {
++  it('finds care-team patients case-insensitively with explicit fields only', async () => {
++    const res = await search(TOKENS.rosa, 'AV');
++    expect(res.status).toBe(200);
++    expect(res.json.results.map((r: { id: string }) => r.id)).toEqual(['pt_ava']);
++    expect(Object.keys(res.json.results[0]).sort()).toEqual(['dateOfBirth', 'firstName', 'id', 'lastName']);
++    expect(res.text).not.toMatch(/mrn|email|phone|reason/i);
++  });
++
++  it('does not return patients outside the care team', async () => {
++    const res = await search(TOKENS.malik, 'ava');
++    expect(res.status).toBe(200);
++    expect(res.json.results).toEqual([]);
++  });
++
++  it('does not return other practices', async () => {
++    const res = await search(TOKENS.hal, 'ava');
++    expect(res.json.results).toEqual([]);
++  });
++
++  it('treats wildcards literally', async () => {
++    const res = await search(TOKENS.rosa, '%%');
++    expect(res.json.results).toEqual([]);
++  });
++
++  it('rejects short or missing q with 400', async () => {
++    expect((await search(TOKENS.rosa, 'a')).status).toBe(400);
++    expect((await search(TOKENS.rosa, undefined)).status).toBe(400);
++  });
++
++  it('is for practitioners only', async () => {
++    expect((await search(TOKENS.ava, 'ava')).status).toBe(403);
++    expect((await search(TOKENS.dana, 'ava')).status).toBe(403);
++    expect((await search(undefined, 'ava')).status).toBe(401);
++  });
++});

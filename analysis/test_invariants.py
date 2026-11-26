@@ -18,7 +18,9 @@ def transcript_text(f):
     for line in f.read_text().splitlines():
         if line.strip():
             ev = json.loads(line)
-            for b in (ev.get('message') or {}).get('content') or []:
+            msg = ev.get('message') if isinstance(ev.get('message'), dict) else {}
+            content = msg.get('content') if isinstance(msg.get('content'), list) else []
+            for b in content:
                 if isinstance(b, dict):
                     if b.get('type') == 'tool_use':
                         out.append(json.dumps(b.get('input'), ensure_ascii=False))
@@ -95,16 +97,26 @@ X = json.loads((DEMO / 'site/data/exhibits.json').read_text())
 for t, T in X['tasks'].items():
     for arm, e in (T.get('excerpts') or {}).items():
         if e:
-            src = (DEMO / e['file']).read_text()
-            check(f'{t} excerpt {arm} is verbatim from {e["file"]}', e['text'] in src)
+            src = subprocess.run(['git', '-C', str(DEMO), 'show', f'bench-v1:{e["file"]}'], capture_output=True, text=True).stdout
+            check(f'{t} excerpt {arm} is verbatim from {e["file"]} at bench-v1', all(q in src for q in e['parts']) and e['text'] == '\n\n'.join(e['parts']))
+    task_src = subprocess.run(['git', '-C', str(DEMO), 'show', f'bench-v1:{T["taskFile"]}'], capture_output=True, text=True).stdout
+    check(f'{t} requirement is verbatim from {T["taskFile"]} at bench-v1', bool(T['requirement']) and T['requirement'] in task_src)
     for trial, lg in (T.get('logs') or {}).items():
         f = PUB / trial / 'transcript.jsonl'
-        check(f'{t} log excerpt is verbatim from {trial}', f.exists() and lg['text'] in transcript_text(f) + (PUB / trial / 'diff.patch').read_text())
+        hay = transcript_text(f) if f.exists() else ''
+        check(f'{t} log excerpt is verbatim from {trial}', bool(lg['parts']) and all(part in hay for part in lg['parts']))
 for ch in X['changes']:
     for side in ('left', 'right'):
         e = ch.get(side)
         if e and e.get('file'):
-            check(f'change excerpt verbatim from {e["file"]}', e['text'] in (DEMO / e['file']).read_text())
+            src = subprocess.run(['git', '-C', str(DEMO), 'show', f'bench-v1:{e["file"]}'], capture_output=True, text=True).stdout
+            check(f'change excerpt verbatim from {e["file"]} at bench-v1', all(q in src for q in e['parts']))
+        if e and e.get('trial'):
+            hay = transcript_text(PUB / e['trial'] / 'transcript.jsonl')
+            check(f'change excerpt verbatim from the log of {e["trial"]}', all(q in hay for q in e['parts']))
+sys.path.insert(0, str(DEMO / 'analysis'))
+import page_text
+check('every number in the page text recomputed from the published verdicts', page_text.build() == {k: X[k] for k in page_text.KEYS})
 page = (DEMO / 'site/index.html').read_text() + json.dumps(X, ensure_ascii=False)
 check('no em dash on the page', '—' not in page)
 check('author full name on the page', 'Frederic de Lavenne de Choulot' in page and 'Frederic de Choulot' not in page.replace('Frederic de Lavenne de Choulot', ''))

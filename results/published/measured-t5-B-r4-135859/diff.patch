@@ -1,0 +1,127 @@
+diff --git a/src/lib/http.ts b/src/lib/http.ts
+index 4e3f736..3df906e 100644
+--- a/src/lib/http.ts
++++ b/src/lib/http.ts
+@@ -1,5 +1,7 @@
+ import { NextResponse } from 'next/server';
+ import { ZodError } from 'zod';
++import { randomUUID } from 'node:crypto';
++import { logger } from './logger';
+ 
+ export class HttpError extends Error {
+   constructor(public readonly status: number, public readonly publicMessage: string) {
+@@ -24,11 +26,36 @@ export function route<C = unknown>(handler: Handler<C>): Handler<C> {
+     } catch (err) {
+       if (err instanceof HttpError) return json({ error: err.publicMessage }, err.status);
+       if (err instanceof ZodError) return json({ error: 'invalid_request' }, 400);
+-      return new Response(null, { status: 500 });
++      const errorId = randomUUID();
++      logger.error('unhandled route error', { errorId, route: routeOf(req), method: req.method, cause: causeOf(err) });
++      return json({ errorId }, 500);
+     }
+   };
+ }
+ 
++/** Path only: the query string is never logged. */
++function routeOf(req: Request): string {
++  try {
++    return new URL(req.url).pathname;
++  } catch {
++    return 'unknown';
++  }
++}
++
++/**
++ * Safe description of an error: class name and driver codes only. `message`, `sql` and
++ * `sqlMessage` can contain bound values (PHI), so they are never logged.
++ */
++function causeOf(err: unknown): Record<string, unknown> {
++  if (!(err instanceof Error)) return { name: typeof err };
++  const e = err as unknown as Record<string, unknown>;
++  const cause: Record<string, unknown> = { name: err.name };
++  for (const k of ['code', 'errno', 'sqlState']) {
++    if (typeof e[k] === 'string' || typeof e[k] === 'number') cause[k] = e[k];
++  }
++  return cause;
++}
++
+ export async function readJson(req: Request): Promise<unknown> {
+   try {
+     return await req.json();
+diff --git a/src/repos/appointments.ts b/src/repos/appointments.ts
+index 1eb9821..f39f3ad 100644
+--- a/src/repos/appointments.ts
++++ b/src/repos/appointments.ts
+@@ -54,7 +54,7 @@ export async function createAppointment(input: {
+ }): Promise<string> {
+   const id = newId('apt');
+   await execute(
+-    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by)
++    `INSERT INTO appointments (id, org_id, patient_id, practitioner_id, starts_at, ends_at, status, visit_reason, created_by_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'booked', ?, ?)`,
+     [id, input.orgId, input.patientId, input.practitionerId, input.startsAt, input.endsAt, input.visitReason, input.createdByUserId],
+   );
+diff --git a/tests/appointments.test.ts b/tests/appointments.test.ts
+index 7ef316b..ca3f7c0 100644
+--- a/tests/appointments.test.ts
++++ b/tests/appointments.test.ts
+@@ -1,5 +1,6 @@
+-import { describe, expect, it } from 'vitest';
+-import { GET } from '@/app/api/appointments/route';
++import { describe, expect, it, vi } from 'vitest';
++import { GET, POST } from '@/app/api/appointments/route';
++import * as dbMod from '@/lib/db';
+ import { call, TOKENS } from './helpers';
+ 
+ describe('GET /api/appointments', () => {
+@@ -16,3 +17,50 @@ describe('GET /api/appointments', () => {
+     expect(res.status).toBe(403);
+   });
+ });
++
++describe('POST /api/appointments', () => {
++  const body = {
++    practitionerId: 'pr_rosa',
++    startsAt: '2030-01-01T10:00:00.000Z',
++    endsAt: '2030-01-01T10:50:00.000Z',
++    visitReason: 'panic attacks at work',
++  };
++  const post = (token: string | undefined, b: unknown = body, path = '/api/appointments') =>
++    call(POST, { method: 'POST', path, token, body: b });
++
++  it('books with a care-team practitioner', async () => {
++    const res = await post(TOKENS.ava);
++    expect(res.status).toBe(201);
++    expect(res.json.id).toMatch(/^apt_/);
++  });
++
++  it('rejects wrong practitioner, practice, role and anonymous', async () => {
++    expect((await post(TOKENS.ava, { ...body, practitionerId: 'pr_malik' })).status).toBe(403);
++    expect((await post(TOKENS.june)).status).toBe(404);
++    expect((await post(TOKENS.rosa)).status).toBe(403);
++    expect((await post(undefined)).status).toBe(401);
++  });
++
++  it('answers unexpected failures with an errorId and logs no patient content', async () => {
++    const out = vi.spyOn(process.stdout, 'write');
++    const err = vi.spyOn(process.stderr, 'write');
++    const spy = vi.spyOn(dbMod, 'execute').mockRejectedValueOnce(
++      Object.assign(new Error("Duplicate entry 'ava@x'"), {
++        code: 'ER_DUP_ENTRY',
++        sql: "INSERT 'panic attacks at work'",
++        sqlMessage: "Duplicate entry 'ava@x'",
++      }),
++    );
++    const res = await post(TOKENS.ava, body, '/api/appointments?x=1');
++    spy.mockRestore();
++    const logged = [...out.mock.calls, ...err.mock.calls].map((c) => String(c[0])).join('');
++    out.mockRestore();
++    err.mockRestore();
++    expect(res.status).toBe(500);
++    expect(Object.keys(res.json)).toEqual(['errorId']);
++    expect(logged).toContain(res.json.errorId);
++    expect(logged).toContain('/api/appointments');
++    expect(logged).toContain('ER_DUP_ENTRY');
++    for (const bad of ['panic', 'ava@x', 'INSERT', 'x=1']) expect(logged).not.toContain(bad);
++  });
++});
