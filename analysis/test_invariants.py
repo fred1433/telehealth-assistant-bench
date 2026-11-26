@@ -117,9 +117,26 @@ for ch in X['changes']:
 sys.path.insert(0, str(DEMO / 'analysis'))
 import page_text
 check('every number in the page text recomputed from the published verdicts', page_text.build() == {k: X[k] for k in page_text.KEYS})
+# Task 5: replay the masking of A's passing runs on a message that carries a name and a date of birth.
+sample = page_text.T5_SAMPLE
+a_pass = [c['trial'] for c in shown['cells']['t5']['A'] if c['state'] == 'pass']
+for trial in a_pass:
+    diff = (PUB / trial / 'diff.patch').read_text()
+    masks = ".replace(/'[^']*'/g" in diff and '.replace(/"[^"]*"/g' in diff
+    replayed = re.sub(r'"[^"]*"', '?', re.sub(r"'[^']*'", '?', sample))
+    check(f'{trial}: its quote masking leaves the sample name and date of birth in clear', masks and 'Jane Roe' in replayed and '1980-01-01' in replayed)
+text_all = json.dumps({k: X[k] for k in page_text.KEYS}, ensure_ascii=False)
+check('page names the replayed sample and says the rule should be tightened', sample in text_all and 'tighten the rule, not to remove it' in text_all)
+for phrase in ['cost B and C', 'takes a rule', 'every patient field', 'every channel', 'enough here', 'hid the']:
+    check(f'page text avoids "{phrase}"', phrase not in text_all)
+r = subprocess.run(['git', 'diff', '--quiet', page_text.RESULTS_REF, '--', 'results/published'], cwd=DEMO)
+check('published logs unchanged since the commit the page links to', r.returncode == 0)
 index = DEMO / 'site/index.html'  # the rendered page is published separately; its data files are here
 page = (index.read_text() if index.exists() else 'Frederic de Lavenne de Choulot') + json.dumps(X, ensure_ascii=False)
 check('no em dash on the page', '—' not in page)
+if index.exists():
+    html = index.read_text()
+    check('page links frozen files at the tag and logs at their commit, never at main', 'blob/main' not in html and '/blob/${X.tag}/' in html and '/blob/${X.resultsRef}/' in html)
 check('author full name on the page', 'Frederic de Lavenne de Choulot' in page and 'Frederic de Choulot' not in page.replace('Frederic de Lavenne de Choulot', ''))
 
 # 7. Published logs are clean.

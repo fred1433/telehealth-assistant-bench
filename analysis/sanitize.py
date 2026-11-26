@@ -28,13 +28,17 @@ def clean(text: str) -> str:
     return text
 
 def main():
-    if PUB.exists():
-        shutil.rmtree(PUB)
-    PUB.mkdir(parents=True)
+    # Rebuilds only what results/raw/ holds; a clone without raw logs keeps the published ones as they are.
+    if not RAW.is_dir():
+        print('no results/raw/: published logs left as they are')
+        return
+    PUB.mkdir(parents=True, exist_ok=True)
     for d in sorted(RAW.iterdir()):
         if not d.is_dir() or not (d / 'verdict.json').exists():
             continue
         out = PUB / d.name
+        if out.exists():
+            shutil.rmtree(out)
         out.mkdir()
         lines = []
         for line in (d / 'transcript.raw.jsonl').read_text().splitlines():
@@ -50,10 +54,10 @@ def main():
                 (out / name).write_text(clean((d / name).read_text()))
     # Setup launches (isolation probes, /init) are published too: they prove the isolation claims.
     setup = PUB / 'setup'
-    setup.mkdir()
+    setup.mkdir(exist_ok=True)
     for d in sorted(Path('/private/tmp/thb-adaptive/done').glob('*')):
         if d.name.startswith(('probe-', 'init-')) and (d / 'transcript.jsonl').exists():
-            (setup / d.name).mkdir()
+            (setup / d.name).mkdir(exist_ok=True)
             lines = []
             for line in (d / 'transcript.jsonl').read_text().splitlines():
                 if line.strip():
@@ -64,7 +68,7 @@ def main():
             (setup / d.name / 'transcript.jsonl').write_text('\n'.join(lines) + '\n')
             if (d / 'meta.json').exists():
                 (setup / d.name / 'meta.json').write_text(clean((d / 'meta.json').read_text()))
-    print(f'published {len(list(PUB.iterdir())) - 1} trials')
+    print(f'published {len([d for d in PUB.iterdir() if d.name != "setup"])} trials')
 
 if __name__ == '__main__':
     main()

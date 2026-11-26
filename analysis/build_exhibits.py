@@ -32,7 +32,7 @@ QUOTES = {
            'B': ['**Cache only what the feature needs.** Keys are `KEY_PREFIX` + ids or hashes; avoid caching PHI values at all, otherwise give them a short TTL and scope them to one user.'],
            'C': ['another blocks edits under `src/` that put a patient identifier or clinical field into a logger call, a URL or query string, an email/push payload or a cache key, and shell writes into `src/` that would skip that check.']},
     't5': {'A': ['Never log PHI; log record ids instead.'],
-           'B': ['Passed an `Error`, it keeps all enumerable properties: a mysql2 error carries `sql` (the full statement **with the bound values**, e.g. a visit reason or an email)',
+           'B': ['Passed an `Error`, it keeps all enumerable properties: a mysql2 error carries `sql` (the full statement **with the bound values**, e.g. a visit reason or an email) and `sqlMessage` (`Duplicate entry \'ava@…\'`).',
                  'Log ids and `err.code` only: never a request body, input object, row, `user`, `req.url`/headers, or a whole error object.'],
            'C': ['another blocks edits under `src/` that put a patient identifier or clinical field into a logger call, a URL or query string, an email/push payload or a cache key, and shell writes into `src/` that would skip that check.']},
     't6': {'A': ['No patient identifiers (name, email, phone, DOB, MRN) or clinical content in logs, URLs, query strings, or cache keys.'],

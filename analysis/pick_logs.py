@@ -36,16 +36,19 @@ def around(text, needle, before, after):
 
 def pick(trial, verdict):
     ev = events(trial)
-    uses, guard, final, log_edit = {}, None, None, None
+    uses, guard, final, log_edit, mask_edit = {}, None, None, None, None
     for e in ev:
         if e.get('type') == 'assistant':
             for b in e['message']['content']:
                 if b.get('type') == 'tool_use':
                     uses[b['id']] = b
                     inp = b.get('input') or {}
-                    code = inp.get('new_string') or inp.get('content') or ''
-                    if 'logger.error' in code and 'http.ts' in str(inp.get('file_path', '')):
+                    code = inp.get('new_string') or inp.get('content') or inp.get('command') or ''
+                    target = str(inp.get('file_path', '')) or code
+                    if 'logger.error' in code and 'http.ts' in target:
                         log_edit = (b, code)
+                    if 'function safeCause' in code and 'http.ts' in target:
+                        mask_edit = (b, code)
         if e.get('type') == 'user' and isinstance(e['message'].get('content'), list):
             for b in e['message']['content']:
                 if b.get('type') == 'tool_result' and guard is None and 'GUARD' in result_text(b):
@@ -60,9 +63,13 @@ def pick(trial, verdict):
         g = msg[msg.find('GUARD'):]
         return {'caption': f'Arm C hook blocking {"an" if call["name"][0] in "AEIOU" else "a"} {call["name"]} call, and its message to the assistant.',
                 'parts': [clip(snippet, 380), clip(g, 520)]}
+    if verdict.get('task') == 't5' and mask_edit and not guard:
+        # Task 5 is where the files differed: show how the run cleaned the cause, not its summary.
+        return {'caption': f'The function this run wrote to clean an error before logging it ({mask_edit[0]["name"]} tool call).',
+                'parts': [clip(around(mask_edit[1], 'function safeCause', 0, 560), 900)]}
     if verdict['state'] != 'pass' and log_edit:
         code = log_edit[1]
-        return {'caption': 'The error-logging code this run wrote (Edit tool call).', 'parts': [clip(around(code, 'logger.error', 420, 300), 900)]}
+        return {'caption': f'The error-logging code this run wrote ({log_edit[0]["name"]} tool call).', 'parts': [clip(around(code, 'logger.error', 420, 300), 900)]}
     if final:
         return {'caption': "The assistant's closing summary, as written at the end of the run.", 'parts': [clip(final, 700)]}
     return None
